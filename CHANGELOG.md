@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.8] - fork pdewaillypro
+
+### Fixed
+- **"Add connected devices" on a patch panel** found nothing: it only followed interfaces, and a
+  panel has none. The device detail now also returns the devices at the far end of its front/rear
+  port cables (`neighbor_device_ids`), so a device removed from the canvas can be brought back from
+  the panel it is patched to.
+
 ## [0.12.0+home.7] - fork pdewaillypro
 
 ### Added

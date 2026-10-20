@@ -1253,6 +1253,11 @@
                 });
             });
 
+            // Front/rear port cables (a patch panel has no interfaces)
+            (data.neighbor_device_ids || []).forEach(function(devId) {
+                if (!canvasIds.has(devId)) neighborIds.add(devId);
+            });
+
             if (neighborIds.size === 0) {
                 showToast('No new connected devices found');
                 return;

@@ -914,9 +914,19 @@ class TopologyDeviceDetailView(LoginRequiredMixin, View):
                 port_data['cable_color'] = f'#{port.cable.color}' if port.cable.color else ''
             ports.append(port_data)
 
+        # Devices at the far end of the front/rear port cables: a patch panel has no interfaces,
+        # so "Add connected devices" on it needs these to find what it is cabled to.
+        port_cable_ids = [p['cable_id'] for p in ports if p['cable_id']]
+        neighbor_device_ids = sorted(set(
+            CableTermination.objects.filter(cable_id__in=port_cable_ids)
+            .exclude(_device_id=device.pk).exclude(_device_id__isnull=True)
+            .values_list('_device_id', flat=True)
+        )) if port_cable_ids else []
+
         return JsonResponse({
             'interfaces': result,
             'ports': ports,
+            'neighbor_device_ids': neighbor_device_ids,
             'device_name': device.name,
             'device_url': device.get_absolute_url(),
         })
