@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.5] - fork pdewaillypro
+
+### Added
+- **Unfolding a cassette pushes the cards under its panel down** (folding pulls them back up), so an
+  unfolded panel never ends up behind its neighbour; the panel is drawn on top.
+- **Placement grid** — while snap-to-grid is on, a grid (minor line every grid step, major every
+  5) with rulers numbered in grid steps is drawn behind the cards, and every card is snapped to it,
+  not only the one being dragged. Saved Views remember snap-to-grid.
+- **Saved Views: unsaved changes** — the Save button shows a dot once the layout changed (move,
+  fold/unfold, toggles), leaving the page asks first, and a view created with "Save as" can be
+  updated in place right away (the Save button appears). Cassettes unfolded one by one are saved.
+
 ## [0.12.0+home.4] - fork pdewaillypro
 
 ### Added

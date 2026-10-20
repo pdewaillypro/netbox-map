@@ -65,6 +65,20 @@
             }
         }
 
+        // Restore the cassettes unfolded one by one, and snap-to-grid
+        if (Array.isArray(layout._expanded_cassettes)) {
+            state.expandedCassettes = new Set(layout._expanded_cassettes);
+        }
+        if (layout._snap_grid) {
+            state.snapToGrid = true;
+            var setSnapBtn = function() {
+                var btn = document.getElementById('topo-snap-grid');
+                if (btn) btn.classList.add('active');
+            };
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setSnapBtn);
+            else setSnapBtn();
+        }
+
         // Restore "unfold all cassettes" toggle
         if (layout._unfold_cassettes) {
             state.foldCassettes = false;
@@ -176,6 +190,13 @@
         if (state.foldCassettes === false) {
             layout._unfold_cassettes = true;
         }
+        // Cassettes unfolded one by one, and snap-to-grid
+        if (state.expandedCassettes && state.expandedCassettes.size) {
+            layout._expanded_cassettes = Array.from(state.expandedCassettes);
+        } else {
+            delete layout._expanded_cassettes;
+        }
+        if (state.snapToGrid) layout._snap_grid = true; else delete layout._snap_grid;
         return layout;
     }
 
@@ -767,6 +788,10 @@
             if (resp.saved) {
                 // Show brief success feedback
                 showToast('View "' + resp.name + '" saved');
+                markClean();
+                // A new view can be updated in place from now on
+                var sb = document.getElementById('topo-save');
+                if (sb) sb.style.display = '';
                 // Update URL to include view_id if new
                 if (!viewId && resp.id) {
                     state.savedViewId = resp.id;
@@ -1123,14 +1148,35 @@
         });
     }
 
-    // Snap to grid toggle
+    // Snap to grid toggle — also shows the placement grid and puts every card on it
     var snapBtn = document.getElementById('topo-snap-grid');
     if (snapBtn) {
         snapBtn.addEventListener('click', function() {
             state.snapToGrid = !state.snapToGrid;
             this.classList.toggle('active', state.snapToGrid);
+            if (state.viewMode === 'stencil' && state.topologyMode === 'network') {
+                state.savedLayout = getCurrentPositions();
+                renderer.render(state.nodes, state.edges, true);
+                markDirty();
+            }
         });
     }
+
+    // Unsaved changes: the Save button shows a dot, and leaving the page asks first
+    function markDirty() {
+        state.layoutDirty = true;
+        var b = document.getElementById('topo-save');
+        if (b) b.classList.add('topo-dirty');
+    }
+    function markClean() {
+        state.layoutDirty = false;
+        var b = document.getElementById('topo-save');
+        if (b) b.classList.remove('topo-dirty');
+    }
+    events.on('layout:changed', markDirty);
+    window.addEventListener('beforeunload', function(e) {
+        if (state.layoutDirty) { e.preventDefault(); e.returnValue = ''; }
+    });
 
     // Add connected devices (from right-click menu)
     // Update app overlay edges when device is dragged in mixed mode
@@ -1467,6 +1513,7 @@
             state.orientedPanels = !this.classList.toggle('active');
             state.savedLayout = getCurrentPositions();
             renderer.render(state.nodes, state.edges, true);
+            markDirty();
         });
     }
 
@@ -1478,6 +1525,7 @@
             state.expandedCassettes = new Set();
             state.savedLayout = getCurrentPositions();
             renderer.render(state.nodes, state.edges, true);
+            markDirty();
         });
     }
 

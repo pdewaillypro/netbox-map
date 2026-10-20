@@ -2241,3 +2241,15 @@ span.topo-iface-dot.empty {
     stroke-dasharray: 4 3;
     pointer-events: none;
 }
+
+/* Placement grid (fork) — shown while snap-to-grid is on */
+.topo-grid-minor { fill: none; stroke: rgba(127, 127, 127, 0.12); stroke-width: 0.5px; }
+.topo-grid-major { fill: none; stroke: rgba(127, 127, 127, 0.30); stroke-width: 1px; }
+.topo-grid-label { fill: rgba(127, 127, 127, 0.6); font-size: 9px; font-family: monospace; }
+
+/* Unsaved changes on the open view (fork) */
+#topo-save.topo-dirty { position: relative; }
+#topo-save.topo-dirty::after {
+    content: ''; position: absolute; top: 3px; right: 3px;
+    width: 7px; height: 7px; border-radius: 50%; background: #f39c12;
+}

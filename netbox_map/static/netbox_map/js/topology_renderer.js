@@ -273,6 +273,44 @@
 
     /* ---- Multi-selection: Ctrl/Cmd+click, Shift+drag lasso, drag together, arrow keys ---- */
 
+    /* ---- Placement grid (shown while snap-to-grid is on): minor/major lines and rulers ---- */
+
+    Renderer.prototype._drawGrid = function(nodeData) {
+        this.g.selectAll('.topo-grid').remove();
+        if (!this.state.snapToGrid || !nodeData || !nodeData.length) return;
+        var gs = this.state.gridSize || 20, major = gs * 5;
+        var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        nodeData.forEach(function(n) {
+            x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y);
+            x1 = Math.max(x1, n.x + cardW(n)); y1 = Math.max(y1, n.y + (n._cardH || 60));
+        });
+        var nx0 = x0, ny0 = y0;   // top-left of the cards, where the rulers go
+        var pad = major * 4;
+        x0 = Math.floor((x0 - pad) / major) * major; y0 = Math.floor((y0 - pad) / major) * major;
+        x1 = Math.ceil((x1 + pad) / major) * major; y1 = Math.ceil((y1 + pad) / major) * major;
+
+        var grid = this.g.insert('g', ':first-child').attr('class', 'topo-grid');
+        var defs = grid.append('defs');
+        defs.append('pattern').attr('id', 'topo-grid-minor').attr('patternUnits', 'userSpaceOnUse')
+            .attr('width', gs).attr('height', gs)
+            .append('path').attr('d', 'M' + gs + ',0 L0,0 0,' + gs).attr('class', 'topo-grid-minor');
+        var mj = defs.append('pattern').attr('id', 'topo-grid-major').attr('patternUnits', 'userSpaceOnUse')
+            .attr('width', major).attr('height', major);
+        mj.append('rect').attr('width', major).attr('height', major).attr('fill', 'url(#topo-grid-minor)');
+        mj.append('path').attr('d', 'M' + major + ',0 L0,0 0,' + major).attr('class', 'topo-grid-major');
+        grid.append('rect').attr('x', x0).attr('y', y0).attr('width', x1 - x0).attr('height', y1 - y0)
+            .attr('fill', 'url(#topo-grid-major)').attr('pointer-events', 'none');
+        // Rulers: the major lines numbered in grid steps, along the top and left edges
+        var rulerY = ny0 - 8, rulerX = nx0 - 6;
+        for (var x = x0; x <= x1; x += major) {
+            grid.append('text').attr('class', 'topo-grid-label').attr('x', x + 2).attr('y', rulerY).text(Math.round(x / gs));
+        }
+        for (var y = y0; y <= y1; y += major) {
+            grid.append('text').attr('class', 'topo-grid-label').attr('x', rulerX).attr('y', y + 10)
+                .attr('text-anchor', 'end').text(Math.round(y / gs));
+        }
+    };
+
     Renderer.prototype._multiSel = function() {
         if (!this.state.multiSelected) this.state.multiSelected = new Set();
         return this.state.multiSelected;
@@ -674,6 +712,35 @@
             nodeData.forEach(function(n) {
                 var saved = savedLayout[n.id];
                 if (saved && saved.x !== undefined) { n.x = saved.x; n.y = saved.y; }
+            });
+        }
+
+        // A cassette was just folded/unfolded: the cards right under that panel move down (or
+        // up) by its change in height, so an unfolded panel never ends up behind its neighbour.
+        var grow = self._growFrom;
+        self._growFrom = null;
+        if (grow) {
+            var gNode = nodeData.find(function(n) { return n.id === grow.id; });
+            if (gNode) {
+                var delta = gNode._cardH - grow.h;
+                var gx0 = gNode.x, gx1 = gNode.x + cardW(gNode), below = gNode.y + grow.h - 5;
+                if (delta) {
+                    nodeData.forEach(function(n) {
+                        if (n === gNode) return;
+                        if (n.x < gx1 && n.x + cardW(n) > gx0 && n.y >= below) n.y += delta;
+                    });
+                }
+                self._raiseId = gNode.id;
+            }
+        }
+
+        // Snap to grid: every card on the grid, so cards line up with each other, not only
+        // the one being dragged.
+        if (self.state.snapToGrid) {
+            var gsz = self.state.gridSize || 20;
+            nodeData.forEach(function(n) {
+                n.x = Math.round(n.x / gsz) * gsz;
+                n.y = Math.round(n.y / gsz) * gsz;
             });
         }
 
@@ -1387,6 +1454,8 @@
 
             function toggleCassette(key) {
                 if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
+                self._growFrom = { id: d.id, h: d._cardH };
+                self.events.emit('layout:changed');
                 var pos = {};
                 nodeData.forEach(function(nd) { pos[nd.id] = { x: nd.x, y: nd.y }; });
                 self.state.savedLayout = pos;
@@ -1466,6 +1535,10 @@
         });
         self._stencilCards = cards;
         self._applyMultiSelection();
+        if (self._raiseId) {
+            cards.filter(function(n) { return n.id === self._raiseId; }).raise();
+        }
+        self._drawGrid(nodeData);
 
         // Right-click context menu
         cards.on('contextmenu', function(ev, d) {
@@ -1685,6 +1758,7 @@
             cards.filter(function(nd) { return sel.has(nd.id); })
                 .attr('transform', function(nd) { return 'translate(' + nd.x + ',' + nd.y + ')'; });
             redrawEdges();
+            self.events.emit('layout:changed');
             clearTimeout(self._nudgeTimer);
             self._nudgeTimer = setTimeout(function() {
                 var pos = {};
@@ -1749,6 +1823,7 @@
                     var o = self.state.nodes.find(function(n) { return n.id === nd.id; });
                     if (o) { o.x = nd.x; o.y = nd.y; }
                 });
+                if (moved) self.events.emit('layout:changed');
                 var hasPanels = nodeData.some(function(nd) { return nd._panel; });
                 if (moved && (self.state.autoSortPorts || hasPanels) && self.state.topologyMode !== 'mixed') {
                     // Sync all positions to state.nodes first

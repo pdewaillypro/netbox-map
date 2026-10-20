@@ -83,11 +83,10 @@
             <i class="mdi mdi-cog-outline"></i> {% trans "Manage Views" %}</a></li>
         </ul>
       </div>
-      {% if saved_view %}
-      <button id="topo-save" class="topo-btn topo-btn-primary" type="button" title="{% trans 'Save Layout' %}">
+      {# Always present (hidden until a view is opened or saved) so a new view can be updated in place #}
+      <button id="topo-save" class="topo-btn topo-btn-primary" type="button" title="{% trans 'Save Layout — update the open view (a dot means unsaved changes)' %}"{% if not saved_view %} style="display:none"{% endif %}>
         <i class="mdi mdi-content-save"></i> {% trans "Save" %}
       </button>
-      {% endif %}
       <button id="topo-save-as" class="topo-btn" type="button" title="{% trans 'Save As New View' %}">
         <i class="mdi mdi-content-save-plus-outline"></i>
       </button>
