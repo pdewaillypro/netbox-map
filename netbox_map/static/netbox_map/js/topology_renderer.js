@@ -237,8 +237,19 @@
         this.svg.on('click', function(ev) {
             if (ev.target === self.svg.node()) {
                 self._deselectAll(); self.events.emit('node:deselect');
+                // A plain click on the background also empties the multi-selection
+                if (!ev.shiftKey && !ev.ctrlKey && !ev.metaKey && self._multiSel().size) {
+                    self._multiSel().clear(); self._applyMultiSelection();
+                }
             }
         });
+
+        // Shift+drag on the background draws a selection rectangle instead of panning
+        this.zoom.filter(function(ev) {
+            if (ev.type === 'mousedown' && ev.shiftKey) return false;
+            return (!ev.ctrlKey || ev.type === 'wheel') && !ev.button;
+        });
+        this._initMultiSelect();
 
         // Arrow markers — sleek chevron style, dynamically created per color
         var defs = this.svg.append('defs');
@@ -258,6 +269,66 @@
         // Pre-create common ones
         var self2 = this;
         ['e74c3c','e67e22','f39c12','3498db','6c757d','5a6080'].forEach(function(hex) { self2._ensureArrow(hex); });
+    };
+
+    /* ---- Multi-selection: Ctrl/Cmd+click, Shift+drag lasso, drag together, arrow keys ---- */
+
+    Renderer.prototype._multiSel = function() {
+        if (!this.state.multiSelected) this.state.multiSelected = new Set();
+        return this.state.multiSelected;
+    };
+
+    Renderer.prototype._applyMultiSelection = function() {
+        var sel = this._multiSel();
+        if (this._stencilCards) {
+            this._stencilCards.classed('multi-selected', function(d) { return sel.has(d.id); });
+        }
+    };
+
+    Renderer.prototype._initMultiSelect = function() {
+        var self = this;
+        var lasso = null;
+
+        this.svg.on('mousedown.lasso', function(ev) {
+            if (!ev.shiftKey || ev.button !== 0 || !self._stencilNodeData) return;
+            if (ev.target !== self.svg.node()) return;  // only from the background
+            ev.preventDefault();
+            var p = d3.pointer(ev, self.g.node());
+            lasso = { x0: p[0], y0: p[1], rect: self.g.append('rect').attr('class', 'topo-lasso')
+                .attr('x', p[0]).attr('y', p[1]).attr('width', 0).attr('height', 0) };
+        });
+        d3.select(window).on('mousemove.lasso', function(ev) {
+            if (!lasso) return;
+            var p = d3.pointer(ev, self.g.node());
+            lasso.x1 = p[0]; lasso.y1 = p[1];
+            lasso.rect.attr('x', Math.min(lasso.x0, p[0])).attr('y', Math.min(lasso.y0, p[1]))
+                .attr('width', Math.abs(p[0] - lasso.x0)).attr('height', Math.abs(p[1] - lasso.y0));
+        }).on('mouseup.lasso', function(ev) {
+            if (!lasso) return;
+            var l = lasso; lasso = null;
+            l.rect.remove();
+            if (l.x1 === undefined) return;
+            var x0 = Math.min(l.x0, l.x1), x1 = Math.max(l.x0, l.x1);
+            var y0 = Math.min(l.y0, l.y1), y1 = Math.max(l.y0, l.y1);
+            var sel = self._multiSel();
+            if (!(ev.ctrlKey || ev.metaKey)) sel.clear();  // Ctrl+Shift+drag adds to the selection
+            (self._stencilNodeData || []).forEach(function(nd) {
+                var w = cardW(nd), h = nd._cardH || 60;
+                if (nd.x < x1 && nd.x + w > x0 && nd.y < y1 && nd.y + h > y0) sel.add(nd.id);
+            });
+            self._applyMultiSelection();
+        });
+
+        document.addEventListener('keydown', function(ev) {
+            var tag = (ev.target && ev.target.tagName) || '';
+            if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (ev.target && ev.target.isContentEditable)) return;
+            var sel = self._multiSel();
+            if (!sel.size) return;
+            if (ev.key === 'Escape') { sel.clear(); self._applyMultiSelection(); return; }
+            var step = (self.state.gridSize || 20) * (ev.shiftKey ? 10 : 1);
+            var d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[ev.key];
+            if (d && self._nudgeSelection && self._nudgeSelection(d[0], d[1])) ev.preventDefault();
+        });
     };
 
     Renderer.prototype._updateSize = function() {
@@ -1380,10 +1451,21 @@
 
         // Click
         cards.on('click', function(ev, d) {
-            ev.stopPropagation(); self._deselectAll();
+            ev.stopPropagation();
+            var sel = self._multiSel();
+            if (ev.ctrlKey || ev.metaKey) {
+                // Ctrl/Cmd+click: add to / remove from the multi-selection
+                if (sel.has(d.id)) sel.delete(d.id); else sel.add(d.id);
+                self._applyMultiSelection();
+                return;
+            }
+            if (!sel.has(d.id) && sel.size) { sel.clear(); self._applyMultiSelection(); }
+            self._deselectAll();
             d3.select(this).classed('selected', true);
             self.state.selectedNode = d; self.events.emit('node:select', d);
         });
+        self._stencilCards = cards;
+        self._applyMultiSelection();
 
         // Right-click context menu
         cards.on('contextmenu', function(ev, d) {
@@ -1570,6 +1652,49 @@
             self.edgeElements.attr('stroke-opacity', null).attr('stroke-width', edgeWidth);
         });
 
+        // Redraw cables, their label paths and connector dots after cards moved
+        function redrawEdges() {
+            self.edgeElements.attr('d', cablePath);
+            edgeData.forEach(function(e) {
+                connectorDots.select('#cable-label-path-' + e.cable_id).remove();
+                createLabelPath(e);
+            });
+            connectorDots.selectAll('circle.connector-dot').remove();
+            edgeData.forEach(function(e) {
+                var sp = getPortPos(e.source_port, typeof e.target === 'object' ? e.target.id : e.target);
+                var tp = getPortPos(e.target_port, typeof e.source === 'object' ? e.source.id : e.source);
+                var ec = getCableColor(e);
+                if (sp) connectorDots.append('circle').attr('class', 'connector-dot')
+                    .attr('cx', sp.x).attr('cy', sp.y).attr('r', 3.5).attr('fill', ec);
+                if (tp) connectorDots.append('circle').attr('class', 'connector-dot')
+                    .attr('cx', tp.x).attr('cy', tp.y).attr('r', 3.5).attr('fill', ec);
+            });
+        }
+
+        // Move the multi-selection by (dx, dy) — arrow keys. Cards and cables follow at once;
+        // ports are re-sorted and panels re-oriented once the keys are released.
+        self._nudgeSelection = function(dx, dy) {
+            var sel = self._multiSel();
+            var moved = nodeData.filter(function(nd) { return sel.has(nd.id); });
+            if (!moved.length) return false;
+            moved.forEach(function(nd) {
+                nd.x += dx; nd.y += dy;
+                var orig = self.state.nodes.find(function(n) { return n.id === nd.id; });
+                if (orig) { orig.x = nd.x; orig.y = nd.y; }
+            });
+            cards.filter(function(nd) { return sel.has(nd.id); })
+                .attr('transform', function(nd) { return 'translate(' + nd.x + ',' + nd.y + ')'; });
+            redrawEdges();
+            clearTimeout(self._nudgeTimer);
+            self._nudgeTimer = setTimeout(function() {
+                var pos = {};
+                nodeData.forEach(function(nd) { pos[nd.id] = { x: nd.x, y: nd.y }; });
+                self.state.savedLayout = pos;
+                self.render(self.state.nodes, self.state.edges, true);
+            }, 400);
+            return true;
+        };
+
         // Drag — update cables, snap to grid if enabled or shift held
         cards.call(d3.drag()
             .on('start', function(ev, d) {
@@ -1578,6 +1703,12 @@
                 d._rawY = d.y;
                 d._dragStartX = d.x;
                 d._dragStartY = d.y;
+                // Dragging a card of the multi-selection moves the whole selection
+                var sel = self._multiSel();
+                d._group = sel.has(d.id) && sel.size > 1
+                    ? nodeData.filter(function(nd) { return sel.has(nd.id) && nd !== d; })
+                    : [];
+                d._group.forEach(function(nd) { nd._dragStartX = nd.x; nd._dragStartY = nd.y; });
             })
             .on('drag', function(ev, d) {
                 // Accumulate raw movement
@@ -1597,36 +1728,27 @@
                 d3.select(this).attr('transform', 'translate(' + d.x + ',' + d.y + ')');
                 var orig = self.state.nodes.find(function(n) { return n.id === d.id; });
                 if (orig) { orig.x = d.x; orig.y = d.y; }
+                if (d._group && d._group.length) {
+                    var ddx = d.x - d._dragStartX, ddy = d.y - d._dragStartY;
+                    d._group.forEach(function(nd) { nd.x = nd._dragStartX + ddx; nd.y = nd._dragStartY + ddy; });
+                    cards.filter(function(nd) { return d._group.indexOf(nd) >= 0; })
+                        .attr('transform', function(nd) { return 'translate(' + nd.x + ',' + nd.y + ')'; });
+                }
 
                 // Notify app renderer overlay so deployed-on edges follow
                 if (self.state.topologyMode === 'mixed') {
                     self.events.emit('device:drag', { id: d.id, x: d.x, y: d.y });
                 }
 
-                // Redraw cables
-                self.edgeElements.attr('d', cablePath);
-
-                // Rebuild label paths (removes old, creates new left-to-right)
-                edgeData.forEach(function(e) {
-                    connectorDots.select('#cable-label-path-' + e.cable_id).remove();
-                    createLabelPath(e);
-                });
-
-                // Redraw connector dots
-                connectorDots.selectAll('circle.connector-dot').remove();
-                edgeData.forEach(function(e) {
-                    var sp = getPortPos(e.source_port, typeof e.target === 'object' ? e.target.id : e.target);
-                    var tp = getPortPos(e.target_port, typeof e.source === 'object' ? e.source.id : e.source);
-                    var ec = getCableColor(e);
-                    if (sp) connectorDots.append('circle').attr('class', 'connector-dot')
-                        .attr('cx', sp.x).attr('cy', sp.y).attr('r', 3.5).attr('fill', ec);
-                    if (tp) connectorDots.append('circle').attr('class', 'connector-dot')
-                        .attr('cx', tp.x).attr('cy', tp.y).attr('r', 3.5).attr('fill', ec);
-                });
+                redrawEdges();
             })
             .on('end', function(ev, d) {
                 // Only re-sort if device actually moved (not just a click)
                 var moved = Math.abs(d.x - d._dragStartX) > 2 || Math.abs(d.y - d._dragStartY) > 2;
+                (d._group || []).forEach(function(nd) {
+                    var o = self.state.nodes.find(function(n) { return n.id === nd.id; });
+                    if (o) { o.x = nd.x; o.y = nd.y; }
+                });
                 var hasPanels = nodeData.some(function(nd) { return nd._panel; });
                 if (moved && (self.state.autoSortPorts || hasPanels) && self.state.topologyMode !== 'mixed') {
                     // Sync all positions to state.nodes first

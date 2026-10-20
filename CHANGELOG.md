@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.4] - fork pdewaillypro
+
+### Added
+- **Multi-selection in the Topology view** (stencil view) — Ctrl/Cmd+click a card to add or remove it;
+  Shift+drag on the background draws a selection rectangle (Ctrl+Shift+drag adds to the selection).
+  Dragging a selected card moves the whole selection; arrow keys move it one grid step (ten with
+  Shift); Esc or a plain click on the background clears it. Ports are re-sorted and patch panels
+  re-oriented once, when the move ends.
+
 ## [0.12.0+home.3] - fork pdewaillypro
 
 ### Fixed

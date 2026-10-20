@@ -2228,3 +2228,16 @@ span.topo-iface-dot.empty {
 .adp-on-device strong { color: #67e8f9; }
 [data-bs-theme="light"] .adp-on-device { color: #0891b2; }
 [data-bs-theme="light"] .adp-on-device strong { color: #0e7490; }
+
+/* Multi-selection (fork): Ctrl/Cmd+click, Shift+drag lasso */
+.topo-stencil-node.multi-selected .stencil-bg {
+    stroke: #0d6efd;
+    stroke-width: 2.5px;
+}
+.topo-lasso {
+    fill: rgba(13, 110, 253, 0.08);
+    stroke: #0d6efd;
+    stroke-width: 1px;
+    stroke-dasharray: 4 3;
+    pointer-events: none;
+}
