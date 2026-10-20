@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.6] - fork pdewaillypro
+
+### Fixed
+- **Fit to view** fits the cards, not the placement grid (which extends well beyond them).
+- **Saved Views keep the display options** — cable labels, cable style (curve/ortho), cable colour
+  (physical/speed) and auto-sort; changing them marks the view as modified.
+- Placement grid readable in the dark theme.
+
 ## [0.12.0+home.5] - fork pdewaillypro
 
 ### Added

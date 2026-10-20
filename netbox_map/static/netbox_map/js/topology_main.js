@@ -65,6 +65,44 @@
             }
         }
 
+        // Restore the display options: cable labels, cable style and colour, auto-sort
+        var whenReady = function(fn) {
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function() { setTimeout(fn, 0); });
+            else setTimeout(fn, 0);
+        };
+        if (layout._show_labels) {
+            state.showCableLabels = true;
+            whenReady(function() {
+                var btn = document.getElementById('topo-toggle-labels');
+                if (btn) btn.classList.add('active');
+                var edgeLayer = document.querySelector('.edge-layer');
+                if (edgeLayer) edgeLayer.classList.add('show-cable-labels');
+            });
+        }
+        if (layout._cable_style === 'ortho') {
+            state.cableStyle = 'ortho';
+            whenReady(function() {
+                var c = document.getElementById('cable-curve'), o = document.getElementById('cable-ortho');
+                if (c) c.classList.remove('active');
+                if (o) o.classList.add('active');
+            });
+        }
+        if (layout._cable_color === 'speed') {
+            state.cableColorMode = 'speed';
+            whenReady(function() {
+                var ph = document.getElementById('cable-color-physical'), sp = document.getElementById('cable-color-speed');
+                if (ph) ph.classList.remove('active');
+                if (sp) sp.classList.add('active');
+            });
+        }
+        if (layout._auto_sort === false) {
+            state.autoSortPorts = false;
+            whenReady(function() {
+                var btn = document.getElementById('topo-auto-sort');
+                if (btn) btn.classList.remove('active');
+            });
+        }
+
         // Restore the cassettes unfolded one by one, and snap-to-grid
         if (Array.isArray(layout._expanded_cassettes)) {
             state.expandedCassettes = new Set(layout._expanded_cassettes);
@@ -197,6 +235,11 @@
             delete layout._expanded_cassettes;
         }
         if (state.snapToGrid) layout._snap_grid = true; else delete layout._snap_grid;
+        // Display options
+        if (state.showCableLabels) layout._show_labels = true; else delete layout._show_labels;
+        if (state.cableStyle === 'ortho') layout._cable_style = 'ortho'; else delete layout._cable_style;
+        if (state.cableColorMode === 'speed') layout._cable_color = 'speed'; else delete layout._cable_color;
+        if (state.autoSortPorts === false) layout._auto_sort = false; else delete layout._auto_sort;
         return layout;
     }
 
@@ -1141,6 +1184,7 @@
         autoSortBtn.addEventListener('click', function() {
             state.autoSortPorts = !state.autoSortPorts;
             this.classList.toggle('active', state.autoSortPorts);
+            markDirty();
             // Clear saved positions so the layout algorithm can optimize freely
             state.savedLayout = null;
             renderer.render(state.nodes, state.edges, true);
@@ -1536,11 +1580,13 @@
         cablePhysical.classList.add('active'); if (cableSpeed) cableSpeed.classList.remove('active');
         state.cableColorMode = 'physical';
         renderer.render(state.nodes, state.edges, true);
+        markDirty();
     });
     if (cableSpeed) cableSpeed.addEventListener('click', function() {
         if (cablePhysical) cablePhysical.classList.remove('active'); cableSpeed.classList.add('active');
         state.cableColorMode = 'speed';
         renderer.render(state.nodes, state.edges, true);
+        markDirty();
     });
 
     // Cable style toggle (curve / orthogonal)
@@ -1549,6 +1595,7 @@
     if (cableCurve) cableCurve.addEventListener('click', function() {
         cableCurve.classList.add('active'); if (cableOrtho) cableOrtho.classList.remove('active');
         state.cableStyle = 'curve';
+        markDirty();
         if (state.topologyMode === 'apps' && appRenderer) {
             appRenderer.switchEdgeStyle('curve');
         } else {
@@ -1558,6 +1605,7 @@
     if (cableOrtho) cableOrtho.addEventListener('click', function() {
         if (cableCurve) cableCurve.classList.remove('active'); cableOrtho.classList.add('active');
         state.cableStyle = 'ortho';
+        markDirty();
         if (state.topologyMode === 'apps' && appRenderer) {
             appRenderer.switchEdgeStyle('ortho');
         } else {
@@ -1569,9 +1617,10 @@
     var toggleLabels = document.getElementById('topo-toggle-labels');
     if (toggleLabels) {
         toggleLabels.addEventListener('click', function() {
-            this.classList.toggle('active');
+            state.showCableLabels = this.classList.toggle('active');
             var edgeLayer = document.querySelector('.edge-layer');
-            if (edgeLayer) edgeLayer.classList.toggle('show-cable-labels');
+            if (edgeLayer) edgeLayer.classList.toggle('show-cable-labels', state.showCableLabels);
+            markDirty();
         });
     }
 

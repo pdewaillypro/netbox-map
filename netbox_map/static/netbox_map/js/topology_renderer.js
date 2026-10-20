@@ -2296,7 +2296,9 @@
     Renderer.prototype.fitToView = function() {
         if (!this.nodeElements || this.nodeElements.empty()) return;
         this._updateSize();
-        var b = this.g.node().getBBox();
+        // Fit on the cards only: the placement grid and its rulers extend well beyond them
+        var layer = this.g.select('.node-layer').node();
+        var b = (layer && layer.getBBox().width) ? layer.getBBox() : this.g.node().getBBox();
         if (b.width === 0 || b.height === 0) return;
         var pad = 80;
         var s = Math.min((this.width - pad * 2) / b.width, (this.height - pad * 2) / b.height, 2);
