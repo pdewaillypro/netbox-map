@@ -448,22 +448,26 @@
                 if (!ports.every(function(p) { return p.port_class === 'front-port' || p.port_class === 'rear-port'; })) return;
                 var groups = {};
                 ports.forEach(function(p) {
-                    if (!p.module || expanded.has(nd.id + '|' + p.module)) return;
-                    var g = groups[p.module] || (groups[p.module] = { f: [], r: [] });
+                    // Ports with no module (a cassette modelled as a plain device, e.g.
+                    // Idea-optical) form one foldable group under the key '*'.
+                    var ck = p.module || '*';
+                    if (expanded.has(nd.id + '|' + ck)) return;
+                    var g = groups[ck] || (groups[ck] = { f: [], r: [] });
                     (p.port_class === 'front-port' ? g.f : g.r).push(p);
                 });
                 var keys = Object.keys(groups);
                 if (!keys.length) return;
-                var kept = ports.filter(function(p) { return !p.module || expanded.has(nd.id + '|' + p.module); });
+                var kept = ports.filter(function(p) { return expanded.has(nd.id + '|' + (p.module || '*')); });
                 var pairs = (nd.passthrough_pairs || []).slice();
                 keys.sort(naturalCompare).forEach(function(k) {
                     var g = groups[k];
-                    var base = 'cas-' + nd.device_id + '-' + k;
+                    var base = 'cas-' + nd.device_id + '-' + (k === '*' ? 'all' : k);
+                    var pre = k === '*' ? '' : k + ' \u00b7 ';
                     var vf = null, vr = null;
                     if (g.f.length) {
                         var fUsed = g.f.filter(function(p) { return p.cabled !== false; }).length;
                         vf = { id: 'fp-' + base, port_class: 'front-port',
-                               name: k + ' \u00b7 ' + (fUsed === g.f.length ? g.f.length : fUsed + '/' + g.f.length) + ' front',
+                               name: pre + (fUsed === g.f.length ? g.f.length : fUsed + '/' + g.f.length) + ' front',
                                module: k, _cassette: k, _members: g.f };
                         g.f.forEach(function(p) { portRemap[p.id] = vf.id; });
                         kept.push(vf);
@@ -471,7 +475,7 @@
                     if (g.r.length) {
                         var rUsed = g.r.filter(function(p) { return p.cabled !== false; }).length;
                         vr = { id: 'rp-' + base, port_class: 'rear-port',
-                               name: k + ' \u00b7 ' + (rUsed === g.r.length ? g.r.length : rUsed + '/' + g.r.length) + ' rear',
+                               name: pre + (rUsed === g.r.length ? g.r.length : rUsed + '/' + g.r.length) + ' rear',
                                module: k, _cassette: k, _members: g.r };
                         g.r.forEach(function(p) { portRemap[p.id] = vr.id; });
                         kept.push(vr);
@@ -580,7 +584,7 @@
             if (foldOn) {
                 rows.forEach(function(r) {
                     var p = r.front || r.rears[0];
-                    if (p && p.module && !p._cassette) headings[p.module] = true;
+                    if (p && !p._cassette) headings[p.module || '*'] = true;
                 });
             }
             slots += Object.keys(headings).length;
@@ -840,7 +844,7 @@
                 });
                 return best;
             }
-            function rowCas(r) { var p = r.front || r.rears[0]; return (p && p.module) || ''; }
+            function rowCas(r) { var p = r.front || r.rears[0]; return (p && p.module) || '*'; }
             function byRow(a, b) {
                 if (self.state.autoSortPorts) {
                     var ya = rowY(a), yb = rowY(b);
@@ -1493,7 +1497,7 @@
                 if (p._cassette) {
                     pg.style('cursor', 'pointer')
                         .on('click', function(ev) { ev.stopPropagation(); toggleCassette(d.id + '|' + p._cassette); });
-                    title = 'Click to unfold cassette ' + p._cassette + ' \u2014';
+                    title = p._cassette === '*' ? 'Click to unfold all ports \u2014' : 'Click to unfold cassette ' + p._cassette + ' \u2014';
                 }
                 pg.append('rect').attr('x', x).attr('y', y).attr('width', colW).attr('height', h)
                     .attr('rx', 2).attr('fill', 'rgba(255,255,255,0.04)')
@@ -1517,8 +1521,8 @@
                 hg.append('rect').attr('x', 0).attr('y', y0).attr('width', W).attr('height', PORT_H)
                     .attr('fill', 'rgba(127,127,127,0.12)');
                 hg.append('text').attr('class', 'port-name').attr('x', W / 2).attr('y', y0 + PORT_H / 2 + 4)
-                    .attr('text-anchor', 'middle').text('\u25be ' + it.heading);
-                hg.append('title').text('Click to fold cassette ' + it.heading);
+                    .attr('text-anchor', 'middle').text('\u25be ' + (it.heading === '*' ? 'ports' : it.heading));
+                hg.append('title').text(it.heading === '*' ? 'Click to fold the ports' : 'Click to fold cassette ' + it.heading);
             });
 
             P.rows.forEach(function(r, ri) {

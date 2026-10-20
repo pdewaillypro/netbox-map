@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.12] - fork pdewaillypro
+
+### Added
+- **Fold module-less cassettes** — a pass-through device whose ports sit on no module (a cassette
+  modelled as a device, e.g. Idea-optical iMER-C) now folds like a module cassette: one
+  `n/m front` / `n rear` row pair, click to unfold, `▾ ports` heading to fold again. The unfolded
+  state is saved with the view (`device-id|*`).
+
 ## [0.12.0+home.11] - fork pdewaillypro
 
 ### Added
