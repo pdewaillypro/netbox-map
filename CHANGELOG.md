@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.10] - fork pdewaillypro
+
+### Fixed
+- A device brought back with "Add connected devices" went back to its first position: the current
+  positions were read from the app renderer's (stale) node list instead of the device cards. Only
+  the devices actually added are now placed next to the source card.
+
 ## [0.12.0+home.9] - fork pdewaillypro
 
 ### Changed

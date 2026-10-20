@@ -246,7 +246,10 @@
     // Get current positions from renderer for preserving across re-renders
     function getCurrentPositions() {
         var positions = {};
-        var renderedNodes = (appRenderer && appRenderer._nodes) || renderer._stencilNodeData || [];
+        // In the network topology the device cards are the stencil renderer's; the app
+        // renderer keeps its own (possibly stale) node list from the last apps/mixed view.
+        var renderedNodes = (state.topologyMode !== 'network' && appRenderer && appRenderer._nodes)
+            || renderer._stencilNodeData || [];
         renderedNodes.forEach(function(n) {
             if (n.x !== undefined) positions[n.id] = { x: n.x, y: n.y };
         });
@@ -1285,7 +1288,7 @@
                     var left = src._panel ? !src._panel.frontRight : false;
                     var k = 0;
                     topoData.nodes.forEach(function(n) {
-                        if (savedPositions[n.id]) return;
+                        if (!neighborIds.has(n.device_id)) return;  // only the devices just added
                         savedPositions[n.id] = {
                             x: left ? src.x - 200 - 120 : src.x + srcW + 120,
                             y: src.y + k * 110,
