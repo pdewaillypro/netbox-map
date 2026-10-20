@@ -10,6 +10,13 @@
     }
 
     var CARD_W = 200;
+    // Patch panels drawn as two columns (front ports | rear ports): wider card.
+    var PANEL_W = 320;
+    var PANEL_GAP = 14;       // gap between the two columns, where the internal links are drawn
+
+    function cardW(d) { return (d && d._w) || CARD_W; }
+
+    function isFrontId(id) { return String(id).indexOf('fp-') === 0; }
     var HEADER_H = 38;
     var PORT_H = 24;          // height of each port container
     var PORT_GAP = 3;         // gap between port containers
@@ -307,6 +314,46 @@
             });
         }
 
+        // Oriented patch panels: a device whose cabled ports are all front/rear ports with a
+        // known front↔rear mapping is drawn as two columns — front ports on one side, the rear
+        // ports each front port maps to on the other, on the same rows. The front column faces
+        // the side most of its neighbours are on (decided below, once positions are known).
+        nodeData.forEach(function(nd) {
+            nd._w = CARD_W;
+            nd._panel = null;
+            if (self.state.orientedPanels === false || nd.node_type === 'application') return;
+            var pairs = nd.passthrough_pairs || [];
+            var ports = nd.ports || [];
+            if (!pairs.length || !ports.length) return;
+            var onlyPassthrough = ports.every(function(p) {
+                return p.port_class === 'front-port' || p.port_class === 'rear-port';
+            });
+            if (!onlyPassthrough) return;
+
+            var byId = {};
+            ports.forEach(function(p) { byId[p.id] = p; });
+            var rearsOf = {};
+            pairs.forEach(function(m) {
+                if (!byId[m.front] || !byId[m.rear]) return;
+                var list = rearsOf[m.front] || (rearsOf[m.front] = []);
+                if (list.indexOf(byId[m.rear]) < 0) list.push(byId[m.rear]);
+            });
+            var used = {};
+            var rows = [];
+            ports.filter(function(p) { return p.port_class === 'front-port'; }).forEach(function(f) {
+                var rs = (rearsOf[f.id] || []).filter(function(r) { return !used[r.id]; });
+                rs.forEach(function(r) { used[r.id] = true; });
+                rs.sort(function(a, b) { return naturalCompare(a.name, b.name); });
+                rows.push({ front: f, rears: rs });
+            });
+            ports.filter(function(p) { return p.port_class === 'rear-port' && !used[p.id]; }).forEach(function(r) {
+                rows.push({ front: null, rears: [r] });
+            });
+            var slots = rows.reduce(function(sum, r) { return sum + Math.max(1, r.rears.length); }, 0);
+            nd._panel = { rows: rows, slots: slots, frontRight: false, slotOf: {} };
+            nd._w = PANEL_W;
+        });
+
         // Compute card heights
         nodeData.forEach(function(nd) {
             if (nd.node_type === 'application') {
@@ -318,7 +365,7 @@
                 if (portCount === 0) nd._cardH = HEADER_H + appInfoH + CARD_PAD;
                 nd._appInfoH = appInfoH;
             } else {
-                var portCount = (nd.ports || []).length;
+                var portCount = nd._panel ? nd._panel.slots : (nd.ports || []).length;
                 nd._cardH = HEADER_H + portCount * (PORT_H + PORT_GAP) + CARD_PAD;
                 if (portCount === 0) nd._cardH = HEADER_H + CARD_PAD;
             }
@@ -349,7 +396,7 @@
 
             // Add ALL nodes
             nodeData.forEach(function(n) {
-                g.setNode(n.id, { width: CARD_W, height: n._cardH });
+                g.setNode(n.id, { width: cardW(n), height: n._cardH });
             });
 
             // Add dependency edges (reversed so providers rank left)
@@ -374,7 +421,7 @@
                 var n = nodeById[id];
                 var pos = g.node(id);
                 if (n && pos) {
-                    n.x = pos.x - CARD_W / 2;
+                    n.x = pos.x - cardW(n) / 2;
                     n.y = pos.y - (n._cardH || 60) / 2;
                 }
             });
@@ -461,13 +508,18 @@
         // Store positioned node data for external access (save, PDF, etc.)
         this._stencilNodeData = nodeData;
 
-        // Build edge lookup: port_id -> target device id
+        // Build edge lookup: port_id -> target device id (and port_id -> port at the other end)
         var portTargetDevice = {};
+        var portPeer = {};
         edgeData.forEach(function(e) {
             var s = typeof e.source === 'object' ? e.source.id : e.source;
             var t = typeof e.target === 'object' ? e.target.id : e.target;
             if (e.source_port) portTargetDevice[e.source_port] = t;
             if (e.target_port) portTargetDevice[e.target_port] = s;
+            if (e.source_port && e.target_port) {
+                portPeer[e.source_port] = e.target_port;
+                portPeer[e.target_port] = e.source_port;
+            }
         });
 
         // Sort ports on each device card (skip app nodes — their order is set by backend)
@@ -491,6 +543,59 @@
             }
         });
 
+        // Oriented panels: pick the side of the front column, order the rows, give every port
+        // its slot (a front port mapped to two rear ports spans both of their rows).
+        nodeData.forEach(function(nd) {
+            var P = nd._panel;
+            if (!P) return;
+            var centre = nd.x + cardW(nd) / 2;
+            function meanX(ports) {
+                var sum = 0, cnt = 0;
+                ports.forEach(function(p) {
+                    var other = nodeById[portTargetDevice[p.id]];
+                    if (other) { sum += other.x + cardW(other) / 2; cnt++; }
+                });
+                return cnt ? sum / cnt : null;
+            }
+            var fronts = [], rears = [];
+            P.rows.forEach(function(r) {
+                if (r.front) fronts.push(r.front);
+                Array.prototype.push.apply(rears, r.rears);
+            });
+            var fx = meanX(fronts), rx = meanX(rears);
+            if (fx !== null && rx !== null) P.frontRight = fx > rx;
+            else if (fx !== null) P.frontRight = fx > centre;
+            else if (rx !== null) P.frontRight = rx < centre;
+            else P.frontRight = false;
+
+            function rowName(r) { return r.front ? r.front.name : (r.rears[0] ? r.rears[0].name : ''); }
+            function rowY(r) {
+                var best = 99999;
+                (r.front ? [r.front] : []).concat(r.rears).forEach(function(p) {
+                    var other = nodeById[portTargetDevice[p.id]];
+                    if (other && other.y < best) best = other.y;
+                });
+                return best;
+            }
+            P.rows.sort(function(a, b) {
+                if (self.state.autoSortPorts) {
+                    var ya = rowY(a), yb = rowY(b);
+                    if (ya !== yb) return ya - yb;
+                }
+                if (!a.front !== !b.front) return a.front ? -1 : 1;
+                return naturalCompare(rowName(a), rowName(b));
+            });
+            var slot = 0;
+            P.slotOf = {};
+            P.rows.forEach(function(r) {
+                r.n = Math.max(1, r.rears.length);
+                r.slot = slot;
+                if (r.front) P.slotOf[r.front.id] = slot + (r.n - 1) / 2;
+                r.rears.forEach(function(rp, i) { P.slotOf[rp.id] = slot + i; });
+                slot += r.n;
+            });
+        });
+
         // Port-to-node lookup
         var portToNode = {};
         nodeData.forEach(function(nd) {
@@ -507,6 +612,17 @@
         function getPortPos(portId, otherNodeId) {
             var nd = portToNode[portId];
             if (!nd) return null;
+            if (nd._panel) {
+                // Fixed side: front ports on the front column's edge, rear ports on the other.
+                var slotIdx = nd._panel.slotOf[portId];
+                if (slotIdx === undefined) return null;
+                var pSide = isFrontId(portId) === nd._panel.frontRight ? 'right' : 'left';
+                return {
+                    x: pSide === 'right' ? nd.x + cardW(nd) : nd.x,
+                    y: nd.y + HEADER_H + slotIdx * (PORT_H + PORT_GAP) + PORT_H / 2,
+                    side: pSide,
+                };
+            }
             var idx = -1;
             for (var i = 0; i < nd.ports.length; i++) {
                 if (nd.ports[i].id === portId) { idx = i; break; }
@@ -516,9 +632,17 @@
             var other = otherNodeId ? nodeById[otherNodeId] : null;
             var side = 'right';
             if (other && other.x < nd.x) side = 'left';
+            // Stacked under/over a patch panel whose port has a fixed side: leave on that same
+            // side, so the cable runs down one rail instead of crossing either card.
+            if (other && other._panel && Math.abs(other.x - nd.x) < CARD_W * 1.2) {
+                var peer = portPeer[portId];
+                if (peer && other._panel.slotOf[peer] !== undefined) {
+                    side = isFrontId(peer) === other._panel.frontRight ? 'right' : 'left';
+                }
+            }
 
             return {
-                x: side === 'right' ? nd.x + CARD_W : nd.x,
+                x: side === 'right' ? nd.x + cardW(nd) : nd.x,
                 y: nd.y + portRelY(nd, idx),
                 side: side,
             };
@@ -591,7 +715,7 @@
             var side = 'right';
             if (otherNd && otherNd.x < nd.x) side = 'left';
             return {
-                x: side === 'right' ? nd.x + CARD_W : nd.x,
+                x: side === 'right' ? nd.x + cardW(nd) : nd.x,
                 y: nd.y + (nd._cardH || 60) / 2,
                 side: side,
             };
@@ -608,8 +732,8 @@
             if (!tp) tp = getNodeEdgePos(tgtNode, srcNode);
             if (!sp || !tp) {
                 if (!srcNode || !tgtNode) return '';
-                return 'M' + (srcNode.x + CARD_W/2) + ',' + (srcNode.y + (srcNode._cardH||40)/2)
-                    + ' L' + (tgtNode.x + CARD_W/2) + ',' + (tgtNode.y + (tgtNode._cardH||40)/2);
+                return 'M' + (srcNode.x + cardW(srcNode)/2) + ',' + (srcNode.y + (srcNode._cardH||40)/2)
+                    + ' L' + (tgtNode.x + cardW(tgtNode)/2) + ',' + (tgtNode.y + (tgtNode._cardH||40)/2);
             }
 
             // Check if devices are in the same column (vertical/HA link)
@@ -623,9 +747,10 @@
             }
 
             if (isSameColumn) {
-                // Same-column (HA): side rail
-                var railBase = Math.max(sp.x, tp.x) + 20;
-                var railX = railBase + d._pairIdx * 14;
+                // Same-column (HA): side rail — on the left when the ports leave on the left
+                var railX = (sp.side === 'left' && tp.side === 'left')
+                    ? Math.min(sp.x, tp.x) - 20 - d._pairIdx * 14
+                    : Math.max(sp.x, tp.x) + 20 + d._pairIdx * 14;
                 return 'M' + sp.x + ',' + sp.y
                     + ' L' + railX + ',' + sp.y
                     + ' L' + railX + ',' + tp.y
@@ -754,8 +879,9 @@
 
             if (isSameColumn) {
                 // Same-column: horizontal label at the rail midpoint
-                var railBase = Math.max(sp.x, tp.x) + 20;
-                var railX = railBase + (d._pairIdx || 0) * 14;
+                var railX = (sp.side === 'left' && tp.side === 'left')
+                    ? Math.min(sp.x, tp.x) - 20 - (d._pairIdx || 0) * 14
+                    : Math.max(sp.x, tp.x) + 20 + (d._pairIdx || 0) * 14;
                 var midY = (sp.y + tp.y) / 2;
                 // Short horizontal path at the rail for the text
                 labelPath = 'M' + (railX + 4) + ',' + midY + ' L' + (railX + 80) + ',' + midY;
@@ -845,35 +971,35 @@
         // Card shadow (subtle)
         cards.append('rect').attr('class', 'stencil-shadow')
             .attr('x', 2).attr('y', 2)
-            .attr('width', CARD_W).attr('height', function(d) { return d._cardH; })
+            .attr('width', cardW).attr('height', function(d) { return d._cardH; })
             .attr('rx', 6).attr('ry', 6)
             .attr('fill', 'rgba(0,0,0,0.15)');
 
         // Card body
         cards.append('rect').attr('class', 'stencil-bg')
-            .attr('width', CARD_W).attr('height', function(d) { return d._cardH; })
+            .attr('width', cardW).attr('height', function(d) { return d._cardH; })
             .attr('rx', 6).attr('ry', 6);
 
         // Role color top stripe (rounded top corners)
         cards.append('clipPath')
             .attr('id', function(d) { return 'clip-' + d.id; })
             .append('rect')
-            .attr('width', CARD_W).attr('height', function(d) { return d._cardH; })
+            .attr('width', cardW).attr('height', function(d) { return d._cardH; })
             .attr('rx', 6).attr('ry', 6);
 
         cards.append('rect').attr('class', 'stencil-stripe')
-            .attr('width', CARD_W).attr('height', 4)
+            .attr('width', cardW).attr('height', 4)
             .attr('clip-path', function(d) { return 'url(#clip-' + d.id + ')'; })
             .attr('fill', function(d) { return d.role_color || '#6c757d'; });
 
         // Device name — auto-fits to card width
-        var maxTextW = CARD_W - 16;
         cards.append('text').attr('class', 'stencil-name')
-            .attr('x', CARD_W / 2).attr('y', 18).attr('text-anchor', 'middle')
+            .attr('x', function(d) { return cardW(d) / 2; }).attr('y', 18).attr('text-anchor', 'middle')
             .text(function(d) { return d.name || ''; })
             .each(function(d) {
                 // After rendering, check if text is wider than card and compress
                 var textW = this.getComputedTextLength();
+                var maxTextW = cardW(d) - 16;
                 if (textW > maxTextW) {
                     d3.select(this)
                         .attr('textLength', maxTextW)
@@ -883,10 +1009,11 @@
 
         // Device type — auto-fits to card width
         cards.append('text').attr('class', 'stencil-type')
-            .attr('x', CARD_W / 2).attr('y', 30).attr('text-anchor', 'middle')
+            .attr('x', function(d) { return cardW(d) / 2; }).attr('y', 30).attr('text-anchor', 'middle')
             .text(function(d) { return d.device_type || ''; })
             .each(function(d) {
                 var textW = this.getComputedTextLength();
+                var maxTextW = cardW(d) - 16;
                 if (textW > maxTextW) {
                     d3.select(this)
                         .attr('textLength', maxTextW)
@@ -898,14 +1025,14 @@
         cards.filter(function(d) { return d.node_type !== 'application'; }).each(function(d) {
             var sc = App.statusColor(d.status_value);
             d3.select(this).append('circle')
-                .attr('cx', CARD_W - 10).attr('cy', 10)
+                .attr('cx', cardW(d) - 10).attr('cy', 10)
                 .attr('r', 4).attr('fill', sc)
                 .append('title').text(d.status || '');
         });
 
         // Separator
         cards.append('line')
-            .attr('x1', 4).attr('x2', CARD_W - 4)
+            .attr('x1', 4).attr('x2', function(d) { return cardW(d) - 4; })
             .attr('y1', HEADER_H - 1).attr('y2', HEADER_H - 1)
             .attr('stroke', 'rgba(255,255,255,0.08)');
 
@@ -962,6 +1089,7 @@
         cards.each(function(d) {
             if (!d.ports || d.ports.length === 0) return;
             var g = d3.select(this);
+            if (d._panel) { drawPanel(g, d); return; }
             var portStartY = d._appInfoH ? HEADER_H + d._appInfoH : HEADER_H;
             var isApp = d.node_type === 'application';
 
@@ -1027,6 +1155,65 @@
                 }
             });
         });
+
+        // Oriented patch panel: front column | rear column, internal links drawn between them.
+        function drawPanel(g, d) {
+            var P = d._panel;
+            var W = cardW(d);
+            var step = PORT_H + PORT_GAP;
+            var colW = (W - PANEL_GAP) / 2;
+            var frontX = P.frontRight ? W - colW : 0;
+            var rearX = P.frontRight ? 0 : W - colW;
+            var maxChars = Math.floor((colW - 16) / 6.2);
+
+            // Column captions in the header, on the side of each column
+            g.append('text').attr('class', 'port-speed')
+                .attr('x', P.frontRight ? W - 8 : 8).attr('y', HEADER_H - 4)
+                .attr('text-anchor', P.frontRight ? 'end' : 'start')
+                .attr('fill', '#ff9800').attr('font-size', '8px').text('FRONT');
+            g.append('text').attr('class', 'port-speed')
+                .attr('x', P.frontRight ? 8 : W - 8).attr('y', HEADER_H - 4)
+                .attr('text-anchor', P.frontRight ? 'start' : 'end')
+                .attr('fill', '#795548').attr('font-size', '8px').text('REAR');
+
+            function cell(x, y, h, p, color, outerLeft, title) {
+                var pg = g.append('g').attr('class', 'port-container');
+                pg.append('rect').attr('x', x).attr('y', y).attr('width', colW).attr('height', h)
+                    .attr('rx', 2).attr('fill', 'rgba(255,255,255,0.04)')
+                    .attr('stroke', 'rgba(127,127,127,0.25)').attr('stroke-width', 0.5);
+                pg.append('rect').attr('x', outerLeft ? x : x + colW - 3).attr('y', y + 2)
+                    .attr('width', 3).attr('height', h - 4).attr('rx', 1).attr('fill', color);
+                var name = p.name.length > maxChars ? p.name.substring(0, maxChars - 2) + '..' : p.name;
+                pg.append('text').attr('class', 'port-name')
+                    .attr('x', outerLeft ? x + 10 : x + colW - 10)
+                    .attr('y', y + h / 2 + 4)
+                    .attr('text-anchor', outerLeft ? 'start' : 'end')
+                    .text(name);
+                pg.append('title').text(title + ' ' + p.name);
+            }
+
+            P.rows.forEach(function(r, ri) {
+                var y0 = HEADER_H + r.slot * step;
+                var h = r.n * step - PORT_GAP;
+                g.append('rect').attr('x', 0).attr('y', y0).attr('width', W).attr('height', h)
+                    .attr('fill', ri % 2 === 0 ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.02)');
+                if (r.front) cell(frontX, y0, h, r.front, '#ff9800', !P.frontRight, 'Front');
+                r.rears.forEach(function(rp, i) {
+                    cell(rearX, y0 + i * step, PORT_H, rp, '#795548', P.frontRight, 'Rear');
+                });
+                // Internal front→rear mapping: the "Y" of a duplex cassette
+                if (r.front) {
+                    var fEdge = P.frontRight ? frontX : frontX + colW;
+                    var rEdge = P.frontRight ? rearX + colW : rearX;
+                    r.rears.forEach(function(rp, i) {
+                        g.append('path').attr('class', 'panel-mapping')
+                            .attr('d', 'M' + fEdge + ',' + (y0 + h / 2) + ' L' + rEdge + ',' + (y0 + i * step + PORT_H / 2))
+                            .attr('stroke', '#8a8f98').attr('stroke-width', 1).attr('fill', 'none')
+                            .attr('stroke-opacity', 0.7);
+                    });
+                }
+            });
+        }
 
         // Click
         cards.on('click', function(ev, d) {
@@ -1144,7 +1331,7 @@
             menu.append('div').attr('class', 'ctx-item')
                 .html('<i class="mdi mdi-crosshairs-gps"></i> Center on device')
                 .on('click', function() {
-                    var cx = d.x + CARD_W / 2;
+                    var cx = d.x + cardW(d) / 2;
                     var cy = d.y + (d._cardH || 60) / 2;
                     var w = self.width, h = self.height;
                     self.svg.transition().duration(400).call(
@@ -1174,7 +1361,7 @@
                         // Add pin icon
                         cardEl.selectAll('.pin-indicator').remove();
                         cardEl.append('text').attr('class', 'pin-indicator')
-                            .attr('x', CARD_W - 14).attr('y', 16)
+                            .attr('x', cardW(d) - 14).attr('y', 16)
                             .attr('font-family', 'Material Design Icons')
                             .attr('font-size', 14).attr('fill', '#f39c12')
                             .text('\uF403');
@@ -1277,7 +1464,8 @@
             .on('end', function(ev, d) {
                 // Only re-sort if device actually moved (not just a click)
                 var moved = Math.abs(d.x - d._dragStartX) > 2 || Math.abs(d.y - d._dragStartY) > 2;
-                if (moved && self.state.autoSortPorts && self.state.topologyMode !== 'mixed') {
+                var hasPanels = nodeData.some(function(nd) { return nd._panel; });
+                if (moved && (self.state.autoSortPorts || hasPanels) && self.state.topologyMode !== 'mixed') {
                     // Sync all positions to state.nodes first
                     nodeData.forEach(function(nd) {
                         var orig = self.state.nodes.find(function(n) { return n.id === nd.id; });

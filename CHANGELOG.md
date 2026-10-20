@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.1] - fork pdewaillypro
+
+### Added
+- **Oriented patch panels in the Topology view** — a device whose cabled ports are all front/rear
+  ports with a known front↔rear mapping is drawn as two columns: front ports on one side, the rear
+  ports each front port maps to on the other, on the same rows, with the internal mapping drawn
+  between them (the "Y" of a duplex cassette is visible). The front column faces the side most of
+  its neighbours are on, and the card flips when you drag it across. Cables keep to the port's side,
+  also for a device stacked under or over a panel.
+- **Toolbar: free patch panel ports** (`mdi-view-split-vertical`) — back to the original single list
+  of ports. Saved Views remember it.
+
 ## [0.12.0] - 2026-05-23
 
 ### Added

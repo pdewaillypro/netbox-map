@@ -65,6 +65,20 @@
             }
         }
 
+        // Restore "free patch panel ports" toggle
+        if (layout._free_panel_ports) {
+            state.orientedPanels = false;
+            var setFreeBtn = function() {
+                var btn = document.getElementById('topo-free-panel-ports');
+                if (btn) btn.classList.add('active');
+            };
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', setFreeBtn);
+            } else {
+                setFreeBtn();
+            }
+        }
+
         // Merge mode-specific positions into the top level
         var modeKey = '_pos_' + state.topologyMode;
         if (layout[modeKey] && typeof layout[modeKey] === 'object') {
@@ -141,6 +155,9 @@
         // #61 — persist "Hide unconnected ports" toggle in saved views
         if (state.hideUnconnectedPorts) {
             layout._hide_unconnected_ports = true;
+        }
+        if (state.orientedPanels === false) {
+            layout._free_panel_ports = true;
         }
         return layout;
     }
@@ -1421,6 +1438,16 @@
     if (hideUnconnected) {
         hideUnconnected.addEventListener('click', function() {
             state.hideUnconnectedPorts = this.classList.toggle('active');
+            state.savedLayout = getCurrentPositions();
+            renderer.render(state.nodes, state.edges, true);
+        });
+    }
+
+    // Patch panels: front | rear columns (default) or free ports (original layout)
+    var freePanelPorts = document.getElementById('topo-free-panel-ports');
+    if (freePanelPorts) {
+        freePanelPorts.addEventListener('click', function() {
+            state.orientedPanels = !this.classList.toggle('active');
             state.savedLayout = getCurrentPositions();
             renderer.render(state.nodes, state.edges, true);
         });

@@ -51,6 +51,7 @@ window.TopologyApp = (function() {
         this.snapToGrid = false;
         this.gridSize = 20;
         this.autoSortPorts = true;
+        this.orientedPanels = true;  // patch panels as front | rear columns (see renderer)
         this.customHierarchy = null;
         this.addedDeviceIds = new Set();
         this.searchQuery = '';
