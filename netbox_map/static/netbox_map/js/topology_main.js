@@ -1275,8 +1275,27 @@
                 if (emptyEl) emptyEl.classList.add('d-none');
                 state.nodes = topoData.nodes;
                 state.edges = topoData.edges;
+                // Place the devices just added next to the one they were added from (on the
+                // front side of a patch panel), stacked, instead of where the automatic layout
+                // would put them; and keep the current zoom/pan.
+                var src = (renderer._stencilNodeData || []).find(function(n) { return n.id === node.id; })
+                    || savedPositions[node.id];
+                if (src && src.x !== undefined) {
+                    var srcW = src._w || 200;
+                    var left = src._panel ? !src._panel.frontRight : false;
+                    var k = 0;
+                    topoData.nodes.forEach(function(n) {
+                        if (savedPositions[n.id]) return;
+                        savedPositions[n.id] = {
+                            x: left ? src.x - 200 - 120 : src.x + srcW + 120,
+                            y: src.y + k * 110,
+                        };
+                        k++;
+                    });
+                }
                 state.savedLayout = savedPositions;
-                renderer.render(topoData.nodes, topoData.edges);
+                renderer.render(topoData.nodes, topoData.edges, true);
+                events.emit('layout:changed');
                 events.emit('data:loaded', topoData);
                 if (sidebarEl) sidebarEl.classList.remove('hidden');
 

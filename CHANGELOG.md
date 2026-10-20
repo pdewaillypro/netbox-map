@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.9] - fork pdewaillypro
+
+### Changed
+- **"Add connected devices" places the devices it adds next to the one it was run from** (on the
+  front side of a patch panel, stacked), instead of where the automatic layout puts them, and keeps
+  the current zoom and pan. The view is marked as modified.
+
 ## [0.12.0+home.8] - fork pdewaillypro
 
 ### Fixed
