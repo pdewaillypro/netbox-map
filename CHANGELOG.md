@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.2] - fork pdewaillypro
+
+### Added
+- **Folded cassettes** — on an oriented patch panel, the ports of one module (cassette) fold into
+  one row (`01A · 12 rear` / `01A · 6 front`). Click it to unfold the cassette alone (a heading
+  row `▾ 01A` folds it back). Folded is the default; a toolbar button (`mdi-arrow-expand-vertical`)
+  unfolds every cassette, and Saved Views remember it.
+- **Trunks: one line per cable bundle** — the cables between two folded cassettes are drawn as one
+  line per NetBox cable bundle (`TRK-A02-A13-12FO-PA1 · 12 FO`), thicker the more fibres it holds,
+  linking to the bundle. Hovering lists its cables. Cables without a bundle between the same folded
+  rows are grouped as `N cables`.
+- Topology data now carries each front/rear port's module bay (`module`, `module_id`) and
+  `positions`, and each cable's `bundle_id` / `bundle_name` / `bundle_url` (NetBox 4.6+).
+
 ## [0.12.0+home.1] - fork pdewaillypro
 
 ### Added

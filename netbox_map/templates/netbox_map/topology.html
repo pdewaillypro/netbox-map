@@ -161,6 +161,12 @@
         <i class="mdi mdi-view-split-vertical"></i>
       </button>
 
+      {# Patch panels: unfold every cassette (one row per port, one line per cable) #}
+      <button id="topo-unfold-cassettes" class="topo-btn" type="button"
+              title="{% trans 'Unfold all cassettes — one row per port and one line per cable, instead of one row per cassette and one line per cable bundle (trunk). Click a cassette to fold or unfold it alone.' %}">
+        <i class="mdi mdi-arrow-expand-vertical"></i>
+      </button>
+
       <span class="topo-toolbar-divider"></span>
 
       {# Cable color mode #}

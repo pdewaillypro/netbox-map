@@ -314,6 +314,92 @@
             });
         }
 
+        // Folded cassettes: on a patch panel, the ports of one module (cassette) collapse into
+        // one front and one rear stand-in port, and the cables they carry into one line per
+        // bundle (trunk). A click on a folded cassette unfolds it; state.expandedCassettes keeps
+        // the unfolded ones ("device-id|bay") across re-renders.
+        var foldOn = self.state.orientedPanels !== false && self.state.foldCassettes !== false;
+        var expanded = self.state.expandedCassettes || (self.state.expandedCassettes = new Set());
+        var portRemap = {};
+        if (foldOn) {
+            nodeData.forEach(function(nd) {
+                var ports = nd.ports || [];
+                if (nd.node_type === 'application' || !(nd.passthrough_pairs || []).length || !ports.length) return;
+                if (!ports.every(function(p) { return p.port_class === 'front-port' || p.port_class === 'rear-port'; })) return;
+                var groups = {};
+                ports.forEach(function(p) {
+                    if (!p.module || expanded.has(nd.id + '|' + p.module)) return;
+                    var g = groups[p.module] || (groups[p.module] = { f: [], r: [] });
+                    (p.port_class === 'front-port' ? g.f : g.r).push(p);
+                });
+                var keys = Object.keys(groups);
+                if (!keys.length) return;
+                var kept = ports.filter(function(p) { return !p.module || expanded.has(nd.id + '|' + p.module); });
+                var pairs = (nd.passthrough_pairs || []).slice();
+                keys.sort(naturalCompare).forEach(function(k) {
+                    var g = groups[k];
+                    var base = 'cas-' + nd.device_id + '-' + k;
+                    var vf = null, vr = null;
+                    if (g.f.length) {
+                        vf = { id: 'fp-' + base, name: k + ' \u00b7 ' + g.f.length + ' front', port_class: 'front-port',
+                               module: k, _cassette: k, _members: g.f };
+                        g.f.forEach(function(p) { portRemap[p.id] = vf.id; });
+                        kept.push(vf);
+                    }
+                    if (g.r.length) {
+                        vr = { id: 'rp-' + base, name: k + ' \u00b7 ' + g.r.length + ' rear', port_class: 'rear-port',
+                               module: k, _cassette: k, _members: g.r };
+                        g.r.forEach(function(p) { portRemap[p.id] = vr.id; });
+                        kept.push(vr);
+                    }
+                    if (vf && vr) pairs.push({ front: vf.id, rear: vr.id });
+                });
+                nd.ports = kept;
+                nd.passthrough_pairs = pairs;
+            });
+        }
+        if (Object.keys(portRemap).length) {
+            var aggByKey = {};
+            var folded = [];
+            edgeData.forEach(function(e) {
+                var sp = portRemap[e.source_port] || e.source_port;
+                var tp = portRemap[e.target_port] || e.target_port;
+                if (sp === e.source_port && tp === e.target_port) { folded.push(e); return; }
+                var key = [sp, tp].sort().join('|') + '|' + (e.bundle_id || '-');
+                var a = aggByKey[key];
+                if (!a) {
+                    var n = Object.keys(aggByKey).length;
+                    a = aggByKey[key] = Object.assign({}, e, {
+                        id: 'agg-' + n, cable_id: 'agg' + n, source_port: sp, target_port: tp,
+                        _members: [],
+                    });
+                    folded.push(a);
+                }
+                a._members.push(e);
+            });
+            Object.keys(aggByKey).forEach(function(key) {
+                var a = aggByKey[key];
+                var n = a._members.length;
+                a._count = n;
+                if (a.bundle_name) {
+                    a.cable_label = a.bundle_name + ' \u00b7 ' + n + ' FO';
+                    if (a.bundle_url) a.url = a.bundle_url;
+                } else if (n > 1) {
+                    a.cable_label = n + ' cables';
+                }
+                var pn = function(id) {
+                    for (var i = 0; i < nodeData.length; i++) {
+                        var hit = (nodeData[i].ports || []).find(function(p) { return p.id === id; });
+                        if (hit) return hit.name;
+                    }
+                    return '';
+                };
+                a.source_port_name = pn(a.source_port);
+                a.target_port_name = pn(a.target_port);
+            });
+            edgeData = folded;
+        }
+
         // Oriented patch panels: a device whose cabled ports are all front/rear ports with a
         // known front↔rear mapping is drawn as two columns — front ports on one side, the rear
         // ports each front port maps to on the other, on the same rows. The front column faces
@@ -350,7 +436,16 @@
                 rows.push({ front: null, rears: [r] });
             });
             var slots = rows.reduce(function(sum, r) { return sum + Math.max(1, r.rears.length); }, 0);
-            nd._panel = { rows: rows, slots: slots, frontRight: false, slotOf: {} };
+            // An unfolded cassette gets a heading row (click it to fold the cassette again)
+            var headings = {};
+            if (foldOn) {
+                rows.forEach(function(r) {
+                    var p = r.front || r.rears[0];
+                    if (p && p.module && !p._cassette) headings[p.module] = true;
+                });
+            }
+            slots += Object.keys(headings).length;
+            nd._panel = { rows: rows, slots: slots, frontRight: false, slotOf: {}, headings: headings };
             nd._w = PANEL_W;
         });
 
@@ -577,23 +672,45 @@
                 });
                 return best;
             }
-            P.rows.sort(function(a, b) {
+            function rowCas(r) { var p = r.front || r.rears[0]; return (p && p.module) || ''; }
+            function byRow(a, b) {
                 if (self.state.autoSortPorts) {
                     var ya = rowY(a), yb = rowY(b);
                     if (ya !== yb) return ya - yb;
                 }
                 if (!a.front !== !b.front) return a.front ? -1 : 1;
                 return naturalCompare(rowName(a), rowName(b));
+            }
+            // Rows stay together per cassette; cassettes are ordered like rows (by where their
+            // cables go when auto-sort is on, by name otherwise).
+            var groupsOf = {};
+            P.rows.forEach(function(r) { (groupsOf[rowCas(r)] = groupsOf[rowCas(r)] || []).push(r); });
+            var groupList = Object.keys(groupsOf).map(function(k) {
+                var rs = groupsOf[k].sort(byRow);
+                return { key: k, rows: rs, y: Math.min.apply(null, rs.map(rowY)) };
+            });
+            groupList.sort(function(a, b) {
+                if (self.state.autoSortPorts && a.y !== b.y) return a.y - b.y;
+                return naturalCompare(a.key, b.key);
             });
             var slot = 0;
             P.slotOf = {};
-            P.rows.forEach(function(r) {
-                r.n = Math.max(1, r.rears.length);
-                r.slot = slot;
-                if (r.front) P.slotOf[r.front.id] = slot + (r.n - 1) / 2;
-                r.rears.forEach(function(rp, i) { P.slotOf[rp.id] = slot + i; });
-                slot += r.n;
+            P.items = [];
+            groupList.forEach(function(g) {
+                if (P.headings && P.headings[g.key]) {
+                    P.items.push({ heading: g.key, slot: slot, n: 1 });
+                    slot += 1;
+                }
+                g.rows.forEach(function(r) {
+                    r.n = Math.max(1, r.rears.length);
+                    r.slot = slot;
+                    if (r.front) P.slotOf[r.front.id] = slot + (r.n - 1) / 2;
+                    r.rears.forEach(function(rp, i) { P.slotOf[rp.id] = slot + i; });
+                    slot += r.n;
+                    P.items.push(r);
+                });
             });
+            P.rows = P.items.filter(function(it) { return !it.heading; });
         });
 
         // Port-to-node lookup
@@ -813,6 +930,13 @@
             return lightenIfDark(d.color) || '#6c757d';
         }
 
+        // Base width of a line: an aggregated trunk is thicker the more fibres it carries
+        function edgeWidth(d) {
+            if (d.edge_type === 'deployed_on') return 1;
+            if (d._count > 1) return 1.5 + Math.min(4, Math.log2(d._count));
+            return 1.5;
+        }
+
         // === Draw cables ===
         this.edgeElements = this.g.select('.edge-layer')
             .selectAll('path').data(edgeData).enter().append('path')
@@ -823,11 +947,7 @@
                 return c;
             })
             .attr('stroke', function(d) { return getCableColor(d); })
-            .attr('stroke-width', function(d) {
-                if (d.edge_type === 'deployed_on') return 1;
-                if (d.directed) return 1.5;
-                return 1.5;
-            })
+            .attr('stroke-width', edgeWidth)
             .attr('stroke-opacity', function(d) {
                 if (d.edge_type === 'deployed_on') return 0.2;
                 return 0.7;
@@ -849,6 +969,14 @@
             .on('click', function(ev, d) { ev.stopPropagation(); if (d.url) window.open(d.url, '_blank'); });
 
         this.edgeElements.append('title').text(function(d) {
+            if (d._members) {
+                var head = [d.source_port_name, '\u2192', d.target_port_name].join(' ');
+                var lines = d._members.slice(0, 48).map(function(m) {
+                    return (m.cable_label || ('#' + m.cable_id)) + '  ' + (m.source_port_name || '') + ' \u2192 ' + (m.target_port_name || '');
+                });
+                if (d._members.length > 48) lines.push('\u2026 +' + (d._members.length - 48));
+                return (d.cable_label || '') + '\n' + head + '\n\n' + lines.join('\n');
+            }
             if (d.edge_type === 'deployed_on') return 'Deployed on: ' + (d.label || '');
             if (d.edge_type === 'dependency') {
                 var parts = [d.source_port_name, '\u2192', d.target_port_name];
@@ -928,6 +1056,10 @@
                 .attr('href', '#cable-label-path-' + d.cable_id)
                 .attr('startOffset', '50%')
                 .attr('text-anchor', 'middle');
+            if (d._members) {
+                tp.append('tspan').attr('class', 'cable-label-id').text(d.cable_label || '');
+                return;
+            }
             tp.append('tspan').attr('class', 'cable-label-id').text('#' + d.cable_id);
             if (d.cable_type) {
                 tp.append('tspan').attr('dx', 5).text(d.cable_type);
@@ -951,13 +1083,13 @@
             cableLabels.each(function(ld) {
                 if (ld.cable_id === d.cable_id) d3.select(this).classed('visible', true);
             });
-            d3.select(this).attr('stroke-opacity', 1).attr('stroke-width', 2.5);
+            d3.select(this).attr('stroke-opacity', 1).attr('stroke-width', edgeWidth(d) + 1);
             self.edgeElements.filter(function(e) { return e !== d; }).attr('stroke-opacity', 0.12);
         }).on('mouseleave', function() {
             cableLabels.classed('visible', false);
             self.edgeElements
                 .attr('stroke-opacity', function(d) { return d.edge_type === 'deployed_on' ? 0.2 : 0.7; })
-                .attr('stroke-width', function(d) { return d.edge_type === 'deployed_on' ? 1 : 1.5; });
+                .attr('stroke-width', edgeWidth);
         });
 
         // === Draw device cards ===
@@ -1176,14 +1308,28 @@
                 .attr('text-anchor', P.frontRight ? 'start' : 'end')
                 .attr('fill', '#795548').attr('font-size', '8px').text('REAR');
 
+            function toggleCassette(key) {
+                if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
+                var pos = {};
+                nodeData.forEach(function(nd) { pos[nd.id] = { x: nd.x, y: nd.y }; });
+                self.state.savedLayout = pos;
+                self.render(self.state.nodes, self.state.edges, true);
+            }
+
             function cell(x, y, h, p, color, outerLeft, title) {
                 var pg = g.append('g').attr('class', 'port-container');
+                if (p._cassette) {
+                    pg.style('cursor', 'pointer')
+                        .on('click', function(ev) { ev.stopPropagation(); toggleCassette(d.id + '|' + p._cassette); });
+                    title = 'Click to unfold cassette ' + p._cassette + ' \u2014';
+                }
                 pg.append('rect').attr('x', x).attr('y', y).attr('width', colW).attr('height', h)
                     .attr('rx', 2).attr('fill', 'rgba(255,255,255,0.04)')
                     .attr('stroke', 'rgba(127,127,127,0.25)').attr('stroke-width', 0.5);
                 pg.append('rect').attr('x', outerLeft ? x : x + colW - 3).attr('y', y + 2)
                     .attr('width', 3).attr('height', h - 4).attr('rx', 1).attr('fill', color);
-                var name = p.name.length > maxChars ? p.name.substring(0, maxChars - 2) + '..' : p.name;
+                var label = p._cassette ? '\u25b8 ' + p.name : p.name;
+                var name = label.length > maxChars ? label.substring(0, maxChars - 2) + '..' : label;
                 pg.append('text').attr('class', 'port-name')
                     .attr('x', outerLeft ? x + 10 : x + colW - 10)
                     .attr('y', y + h / 2 + 4)
@@ -1191,6 +1337,17 @@
                     .text(name);
                 pg.append('title').text(title + ' ' + p.name);
             }
+
+            (P.items || []).filter(function(it) { return it.heading; }).forEach(function(it) {
+                var y0 = HEADER_H + it.slot * step;
+                var hg = g.append('g').attr('class', 'port-container').style('cursor', 'pointer')
+                    .on('click', function(ev) { ev.stopPropagation(); toggleCassette(d.id + '|' + it.heading); });
+                hg.append('rect').attr('x', 0).attr('y', y0).attr('width', W).attr('height', PORT_H)
+                    .attr('fill', 'rgba(127,127,127,0.12)');
+                hg.append('text').attr('class', 'port-name').attr('x', W / 2).attr('y', y0 + PORT_H / 2 + 4)
+                    .attr('text-anchor', 'middle').text('\u25be ' + it.heading);
+                hg.append('title').text('Click to fold cassette ' + it.heading);
+            });
 
             P.rows.forEach(function(r, ri) {
                 var y0 = HEADER_H + r.slot * step;
@@ -1400,11 +1557,11 @@
             }).attr('stroke-width', function(e) {
                 var s = typeof e.source === 'object' ? e.source.id : e.source;
                 var t = typeof e.target === 'object' ? e.target.id : e.target;
-                return (s === d.id || t === d.id) ? 3 : 1.5;
+                return (s === d.id || t === d.id) ? edgeWidth(e) + 1.5 : edgeWidth(e);
             });
         });
         cards.on('mouseleave', function() {
-            self.edgeElements.attr('stroke-opacity', null).attr('stroke-width', 2);
+            self.edgeElements.attr('stroke-opacity', null).attr('stroke-width', edgeWidth);
         });
 
         // Drag — update cables, snap to grid if enabled or shift held

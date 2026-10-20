@@ -388,7 +388,8 @@ class TopologyDataView(LoginRequiredMixin, View):
         # FrontPort / RearPort
         fp_ct, rp_ct = port_cts[1], port_cts[2]
         for fp in FrontPort.objects.filter(device_id__in=device_ids).values(
-            'id', 'device_id', 'name', 'type', 'cable_id',
+            'id', 'device_id', 'name', 'type', 'cable_id', 'positions',
+            'module_id', 'module__module_bay__name',
         ):
             key = (fp_ct.pk, fp['id'])
             port_id_map[key] = fp['device_id']
@@ -399,10 +400,15 @@ class TopologyDataView(LoginRequiredMixin, View):
                 'type': fp['type'] or '',
                 'speed': None,
                 'cabled': bool(fp['cable_id']),
+                # Cassette (module) the port sits in, so the front end can fold it to one row
+                'module_id': fp['module_id'],
+                'module': fp['module__module_bay__name'] or '',
+                'positions': fp['positions'],
             }
 
         for rp in RearPort.objects.filter(device_id__in=device_ids).values(
-            'id', 'device_id', 'name', 'type', 'cable_id',
+            'id', 'device_id', 'name', 'type', 'cable_id', 'positions',
+            'module_id', 'module__module_bay__name',
         ):
             key = (rp_ct.pk, rp['id'])
             port_id_map[key] = rp['device_id']
@@ -413,6 +419,9 @@ class TopologyDataView(LoginRequiredMixin, View):
                 'type': rp['type'] or '',
                 'speed': None,
                 'cabled': bool(rp['cable_id']),
+                'module_id': rp['module_id'],
+                'module': rp['module__module_bay__name'] or '',
+                'positions': rp['positions'],
             }
 
         # Console/Power ports (simpler)
@@ -495,6 +504,18 @@ class TopologyDataView(LoginRequiredMixin, View):
                 cable_objects[ct_obj.cable_id] = ct_obj.cable
             cable_terms[ct_obj.cable_id].append(key)
 
+        # Cable bundles (NetBox 4.6+): one query for the names of the bundles in view, so the
+        # front end can draw one line per trunk instead of one per fibre.
+        bundles = {}
+        bundle_ids = {getattr(c, 'bundle_id', None) for c in cable_objects.values()} - {None}
+        if bundle_ids:
+            try:
+                from dcim.models import CableBundle
+                for b in CableBundle.objects.filter(pk__in=bundle_ids):
+                    bundles[b.pk] = {'name': b.name, 'url': b.get_absolute_url()}
+            except ImportError:
+                pass
+
         edges = []
         for cable_id, terms in cable_terms.items():
             # Gather terminations that belong to devices in scope
@@ -550,6 +571,9 @@ class TopologyDataView(LoginRequiredMixin, View):
                         'length': str(cable.length) if cable.length else '',
                         'length_unit': cable.get_length_unit_display() if cable.length_unit else '',
                         'url': cable.get_absolute_url(),
+                        'bundle_id': getattr(cable, 'bundle_id', None),
+                        'bundle_name': bundles.get(getattr(cable, 'bundle_id', None), {}).get('name', ''),
+                        'bundle_url': bundles.get(getattr(cable, 'bundle_id', None), {}).get('url', ''),
                     })
 
         # ── Circuit edges: trace through CircuitTerminations to far-side devices ──

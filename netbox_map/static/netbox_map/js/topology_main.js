@@ -65,6 +65,20 @@
             }
         }
 
+        // Restore "unfold all cassettes" toggle
+        if (layout._unfold_cassettes) {
+            state.foldCassettes = false;
+            var setUnfoldBtn = function() {
+                var btn = document.getElementById('topo-unfold-cassettes');
+                if (btn) btn.classList.add('active');
+            };
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', setUnfoldBtn);
+            } else {
+                setUnfoldBtn();
+            }
+        }
+
         // Restore "free patch panel ports" toggle
         if (layout._free_panel_ports) {
             state.orientedPanels = false;
@@ -158,6 +172,9 @@
         }
         if (state.orientedPanels === false) {
             layout._free_panel_ports = true;
+        }
+        if (state.foldCassettes === false) {
+            layout._unfold_cassettes = true;
         }
         return layout;
     }
@@ -1448,6 +1465,17 @@
     if (freePanelPorts) {
         freePanelPorts.addEventListener('click', function() {
             state.orientedPanels = !this.classList.toggle('active');
+            state.savedLayout = getCurrentPositions();
+            renderer.render(state.nodes, state.edges, true);
+        });
+    }
+
+    // Patch panels: cassettes folded (default, one line per bundle) or all unfolded
+    var unfoldCassettes = document.getElementById('topo-unfold-cassettes');
+    if (unfoldCassettes) {
+        unfoldCassettes.addEventListener('click', function() {
+            state.foldCassettes = !this.classList.toggle('active');
+            state.expandedCassettes = new Set();
             state.savedLayout = getCurrentPositions();
             renderer.render(state.nodes, state.edges, true);
         });
