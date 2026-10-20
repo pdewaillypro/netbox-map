@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.11] - fork pdewaillypro
+
+### Added
+- **Cables leaving the view** — a port whose cable goes to a device that is not on the canvas used
+  to look unconnected. It now gets a short dashed stub with the far device's name, and a tooltip
+  (`→ PP-J14-U46 (off canvas, 12 cables)` on a folded cassette). The topology data carries it as
+  `remote` on each such port.
+
 ## [0.12.0+home.10] - fork pdewaillypro
 
 ### Fixed

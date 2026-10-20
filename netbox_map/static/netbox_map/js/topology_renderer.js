@@ -476,6 +476,15 @@
                         g.r.forEach(function(p) { portRemap[p.id] = vr.id; });
                         kept.push(vr);
                     }
+                    [vf, vr].forEach(function(v) {
+                        if (!v) return;
+                        var away = v._members.filter(function(p) { return p.remote; });
+                        if (!away.length) return;
+                        var names = [];
+                        away.forEach(function(p) { if (names.indexOf(p.remote) < 0) names.push(p.remote); });
+                        v.remote = names.join(', ');
+                        v._remoteCount = away.length;
+                    });
                     if (vf && vr) pairs.push({ front: vf.id, rear: vr.id });
                 });
                 nd.ports = kept;
@@ -1203,6 +1212,7 @@
         }
 
         edgeData.forEach(createLabelPath);
+        drawStubs();
 
         // Cable labels — "#ID Type" following the label path
         var cableLabels = this.g.select('.edge-layer')
@@ -1741,8 +1751,33 @@
             self.edgeElements.attr('stroke-opacity', null).attr('stroke-width', edgeWidth);
         });
 
+        // Cables leaving the view: a short dashed stub on the port, with where it goes, so a port
+        // cabled to a device that is not on the canvas does not look unconnected.
+        function drawStubs() {
+            connectorDots.selectAll('g.cable-stub').remove();
+            nodeData.forEach(function(nd) {
+                (nd.ports || []).forEach(function(p) {
+                    if (!p.remote) return;
+                    if (portTargetDevice[p.id] && nodeById[portTargetDevice[p.id]]) return;  // drawn
+                    var pos = getPortPos(p.id, null);
+                    if (!pos) return;
+                    var dir = pos.side === 'left' ? -1 : 1;
+                    var x2 = pos.x + dir * 22;
+                    var sg = connectorDots.append('g').attr('class', 'cable-stub');
+                    sg.append('path').attr('d', 'M' + pos.x + ',' + pos.y + ' L' + x2 + ',' + pos.y
+                        + ' M' + (x2 - dir * 4) + ',' + (pos.y - 3) + ' L' + x2 + ',' + pos.y + ' L' + (x2 - dir * 4) + ',' + (pos.y + 3));
+                    sg.append('text').attr('x', x2 + dir * 3).attr('y', pos.y + 3)
+                        .attr('text-anchor', dir < 0 ? 'end' : 'start')
+                        .text(p.remote.length > 18 ? p.remote.substring(0, 16) + '..' : p.remote);
+                    sg.append('title').text('\u2192 ' + p.remote + ' (off canvas'
+                        + (p._remoteCount > 1 ? ', ' + p._remoteCount + ' cables' : '') + ')');
+                });
+            });
+        }
+
         // Redraw cables, their label paths and connector dots after cards moved
         function redrawEdges() {
+            drawStubs();
             self.edgeElements.attr('d', cablePath);
             edgeData.forEach(function(e) {
                 connectorDots.select('#cable-label-path-' + e.cable_id).remove();

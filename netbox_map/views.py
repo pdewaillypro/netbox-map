@@ -780,6 +780,32 @@ class TopologyDataView(LoginRequiredMixin, View):
                 'status_value': '',
             })
 
+        # Cables leaving the view: a port cabled to a device that is not on the canvas gets the
+        # name of what is at the other end ('remote'), so the front end can say so instead of
+        # drawing it like an unconnected port.
+        drawn = {e.get('cable_id') for e in edges}
+        leaving = {cid: keys for cid, keys in cable_terms.items() if cid not in drawn}
+        if leaving:
+            in_view = set(port_id_map.keys())
+            remote = {}
+            for row in CableTermination.objects.filter(cable_id__in=list(leaving)).values(
+                'cable_id', 'termination_type_id', 'termination_id', '_device__name', '_device_id',
+            ):
+                if (row['termination_type_id'], row['termination_id']) in in_view:
+                    continue
+                name = row['_device__name'] or 'circuit'
+                names = remote.setdefault(row['cable_id'], [])
+                if name not in names:
+                    names.append(name)
+            for cid, keys in leaving.items():
+                if cid not in remote:
+                    continue
+                for key in keys:
+                    info = port_info_map.get(key)
+                    if info is not None:
+                        info['remote'] = ', '.join(remote[cid])
+                        info['remote_cable_id'] = cid
+
         return JsonResponse({
             'nodes': nodes,
             'edges': edges,

@@ -2262,3 +2262,7 @@ span.topo-iface-dot.empty {
 /* Free (uncabled) port of a patch panel cassette (fork): dimmed, dashed */
 .port-container.port-free { opacity: 0.45; }
 .port-container.port-free rect:first-child { stroke-dasharray: 3 2; }
+
+/* Cable leaving the view (fork): dashed stub + far device name */
+.cable-stub path { fill: none; stroke: #8a8f98; stroke-width: 1.2px; stroke-dasharray: 3 2; }
+.cable-stub text { fill: #8a8f98; font-size: 8px; font-family: monospace; }
