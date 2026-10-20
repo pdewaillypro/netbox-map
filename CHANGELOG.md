@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.3] - fork pdewaillypro
+
+### Fixed
+- A fibre from an unfolded cassette to a folded one kept the bundle label (`TRK-… · 1 FO`) instead of
+  its own label (`TRK-…/F01`); it now keeps its own label and link.
+
 ## [0.12.0+home.2] - fork pdewaillypro
 
 ### Added

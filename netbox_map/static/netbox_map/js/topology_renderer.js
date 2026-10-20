@@ -381,7 +381,13 @@
                 var a = aggByKey[key];
                 var n = a._members.length;
                 a._count = n;
-                if (a.bundle_name) {
+                if (n === 1) {
+                    // A single fibre into a folded cassette (the other end is unfolded): it keeps
+                    // its own label and link, only its end point moves to the folded row.
+                    var only = a._members[0];
+                    a.cable_label = only.cable_label;
+                    a.url = only.url;
+                } else if (a.bundle_name) {
                     a.cable_label = a.bundle_name + ' \u00b7 ' + n + ' FO';
                     if (a.bundle_url) a.url = a.bundle_url;
                 } else if (n > 1) {
