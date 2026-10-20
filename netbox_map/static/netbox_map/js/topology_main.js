@@ -95,6 +95,14 @@
                 if (sp) sp.classList.add('active');
             });
         }
+        if (layout._view_mode === 'node') {
+            state.viewMode = 'node';
+            whenReady(function() {
+                var st = document.getElementById('view-stencil'), nd = document.getElementById('view-node');
+                if (st) st.classList.remove('active');
+                if (nd) nd.classList.add('active');
+            });
+        }
         if (layout._auto_sort === false) {
             state.autoSortPorts = false;
             whenReady(function() {
@@ -240,6 +248,7 @@
         if (state.cableStyle === 'ortho') layout._cable_style = 'ortho'; else delete layout._cable_style;
         if (state.cableColorMode === 'speed') layout._cable_color = 'speed'; else delete layout._cable_color;
         if (state.autoSortPorts === false) layout._auto_sort = false; else delete layout._auto_sort;
+        if (state.viewMode === 'node') layout._view_mode = 'node'; else delete layout._view_mode;
         return layout;
     }
 
@@ -789,10 +798,12 @@
     if (viewStencil) viewStencil.addEventListener('click', function() {
         viewStencil.classList.add('active'); if (viewNode) viewNode.classList.remove('active');
         renderer.switchView('stencil');
+        markDirty();
     });
     if (viewNode) viewNode.addEventListener('click', function() {
         if (viewStencil) viewStencil.classList.remove('active'); viewNode.classList.add('active');
         renderer.switchView('node');
+        markDirty();
     });
 
     // Layout toggle

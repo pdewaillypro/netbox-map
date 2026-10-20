@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A device brought back with "Add connected devices" went back to its first position: the current
   positions were read from the app renderer's (stale) node list instead of the device cards. Only
   the devices actually added are now placed next to the source card.
+- **Saved Views remember the stencil/node view** — reopening a view saved in node view shows it
+  in node view again; switching view marks the view as modified.
 
 ## [0.12.0+home.9] - fork pdewaillypro
 
