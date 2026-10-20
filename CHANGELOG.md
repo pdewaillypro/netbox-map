@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.7] - fork pdewaillypro
+
+### Added
+- **Free ports of a cassette** — front/rear ports are now sent even when uncabled, and an oriented
+  patch panel shows them: a folded cassette counts used/total (`01A · 1/6 front`), an unfolded one
+  lists every front port with its internal mapping to the rear ports, the free ones dimmed. Other
+  cards, and the free-ports layout, still show cabled ports only. "Hide unconnected ports" hides
+  free ports too.
+
 ## [0.12.0+home.6] - fork pdewaillypro
 
 ### Fixed

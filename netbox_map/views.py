@@ -444,9 +444,11 @@ class TopologyDataView(LoginRequiredMixin, View):
                     'cabled': bool(p['cable_id']),
                 }
 
-        # Attach cabled ports to their device nodes (only cabled ones for stencil view)
+        # Attach cabled ports to their device nodes (only cabled ones for stencil view).
+        # Front/rear ports are sent even uncabled: on a patch panel the front end shows the free
+        # ports of a cassette (and drops them for any other device).
         for key, info in port_info_map.items():
-            if info['cabled']:
+            if info['cabled'] or info['port_class'] in ('front-port', 'rear-port'):
                 dev_id = port_id_map[key]
                 if dev_id in device_map:
                     device_map[dev_id]['ports'].append(info)

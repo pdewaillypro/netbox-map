@@ -2258,3 +2258,7 @@ span.topo-iface-dot.empty {
 [data-bs-theme="dark"] .topo-grid-minor { stroke: rgba(255, 255, 255, 0.07); }
 [data-bs-theme="dark"] .topo-grid-major { stroke: rgba(255, 255, 255, 0.18); }
 [data-bs-theme="dark"] .topo-grid-label { fill: rgba(255, 255, 255, 0.45); }
+
+/* Free (uncabled) port of a patch panel cassette (fork): dimmed, dashed */
+.port-container.port-free { opacity: 0.45; }
+.port-container.port-free rect:first-child { stroke-dasharray: 3 2; }

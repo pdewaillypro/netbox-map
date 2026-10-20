@@ -401,6 +401,17 @@
         });
         var edgeData = edges.map(function(e) { return Object.assign({}, e); });
 
+        // Uncabled front/rear ports come with the data so a patch panel can show the free ports
+        // of its cassettes; every other card (and the free-ports layout) keeps cabled ports only.
+        nodeData.forEach(function(nd) {
+            var ports = nd.ports || [];
+            if (!ports.some(function(p) { return p.cabled === false; })) return;
+            var panel = self.state.orientedPanels !== false && nd.node_type !== 'application'
+                && (nd.passthrough_pairs || []).length
+                && ports.every(function(p) { return p.port_class === 'front-port' || p.port_class === 'rear-port'; });
+            if (!panel) nd.ports = ports.filter(function(p) { return p.cabled !== false; });
+        });
+
         // #61 — Hide ports whose other end isn't in the current view.
         // Build a port_id → endpoint device map first, then a set of visible
         // device ids; any port whose remote endpoint isn't visible gets
@@ -450,13 +461,17 @@
                     var base = 'cas-' + nd.device_id + '-' + k;
                     var vf = null, vr = null;
                     if (g.f.length) {
-                        vf = { id: 'fp-' + base, name: k + ' \u00b7 ' + g.f.length + ' front', port_class: 'front-port',
+                        var fUsed = g.f.filter(function(p) { return p.cabled !== false; }).length;
+                        vf = { id: 'fp-' + base, port_class: 'front-port',
+                               name: k + ' \u00b7 ' + (fUsed === g.f.length ? g.f.length : fUsed + '/' + g.f.length) + ' front',
                                module: k, _cassette: k, _members: g.f };
                         g.f.forEach(function(p) { portRemap[p.id] = vf.id; });
                         kept.push(vf);
                     }
                     if (g.r.length) {
-                        vr = { id: 'rp-' + base, name: k + ' \u00b7 ' + g.r.length + ' rear', port_class: 'rear-port',
+                        var rUsed = g.r.filter(function(p) { return p.cabled !== false; }).length;
+                        vr = { id: 'rp-' + base, port_class: 'rear-port',
+                               name: k + ' \u00b7 ' + (rUsed === g.r.length ? g.r.length : rUsed + '/' + g.r.length) + ' rear',
                                module: k, _cassette: k, _members: g.r };
                         g.r.forEach(function(p) { portRemap[p.id] = vr.id; });
                         kept.push(vr);
@@ -1463,7 +1478,8 @@
             }
 
             function cell(x, y, h, p, color, outerLeft, title) {
-                var pg = g.append('g').attr('class', 'port-container');
+                var pg = g.append('g').attr('class', 'port-container' + (p.cabled === false ? ' port-free' : ''));
+                if (p.cabled === false) title = title + ' (free)';
                 if (p._cassette) {
                     pg.style('cursor', 'pointer')
                         .on('click', function(ev) { ev.stopPropagation(); toggleCassette(d.id + '|' + p._cassette); });
