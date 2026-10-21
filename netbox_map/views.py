@@ -513,8 +513,11 @@ class TopologyDataView(LoginRequiredMixin, View):
         if bundle_ids:
             try:
                 from dcim.models import CableBundle
-                for b in CableBundle.objects.filter(pk__in=bundle_ids):
-                    bundles[b.pk] = {'name': b.name, 'url': b.get_absolute_url()}
+                for b in CableBundle.objects.filter(pk__in=bundle_ids).prefetch_related('tags'):
+                    # Bundle colour = colour of its first tag (alphabetical), e.g. a "fibre-om4" tag in aqua
+                    tag = next((t for t in sorted(b.tags.all(), key=lambda t: t.name) if t.color), None)
+                    bundles[b.pk] = {'name': b.name, 'url': b.get_absolute_url(),
+                                     'color': f'#{tag.color}' if tag else ''}
             except ImportError:
                 pass
 
@@ -576,6 +579,7 @@ class TopologyDataView(LoginRequiredMixin, View):
                         'bundle_id': getattr(cable, 'bundle_id', None),
                         'bundle_name': bundles.get(getattr(cable, 'bundle_id', None), {}).get('name', ''),
                         'bundle_url': bundles.get(getattr(cable, 'bundle_id', None), {}).get('url', ''),
+                        'bundle_color': bundles.get(getattr(cable, 'bundle_id', None), {}).get('color', ''),
                     })
 
         # ── Circuit edges: trace through CircuitTerminations to far-side devices ──

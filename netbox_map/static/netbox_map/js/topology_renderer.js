@@ -508,7 +508,7 @@
                     var n = Object.keys(aggByKey).length;
                     a = aggByKey[key] = Object.assign({}, e, {
                         id: 'agg-' + n, cable_id: 'agg' + n, source_port: sp, target_port: tp,
-                        _members: [],
+                        _members: [], _bothFolded: sp !== e.source_port && tp !== e.target_port,
                     });
                     folded.push(a);
                 }
@@ -530,6 +530,9 @@
                 } else if (n > 1) {
                     a.cable_label = n + ' cables';
                 }
+                // A trunk drawn as one line takes its bundle's colour (colour of the bundle's first
+                // coloured tag, e.g. yellow OS2 / aqua OM4). A lone fibre keeps its own colour code.
+                if (a.bundle_color && (n > 1 || a._bothFolded)) a.color = a.bundle_color;
                 var pn = function(id) {
                     for (var i = 0; i < nodeData.length; i++) {
                         var hit = (nodeData[i].ports || []).find(function(p) { return p.id === id; });

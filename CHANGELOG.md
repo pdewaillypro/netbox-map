@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.13] - fork pdewaillypro
+
+### Added
+- **Bundle colour** — a trunk drawn as one line (folded cassettes) takes the colour of its cable
+  bundle: the colour of the bundle's first coloured tag (e.g. `fibre-os2` yellow, `fibre-om4` aqua).
+  Unfolded, each fibre keeps its own colour code. The topology data carries it as `bundle_color`.
+
 ## [0.12.0+home.12] - fork pdewaillypro
 
 ### Added
