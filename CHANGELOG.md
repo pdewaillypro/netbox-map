@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.16] - fork pdewaillypro
+
+### Changed
+- **Forked trunks** — a cable drawn as several lines (connector-profile trunk, e.g. a 16F MTP
+  trunk with two MTP8 legs at each end) is drawn as one trunk with a fork at each end: every leg
+  runs from its port to a junction just off the card and they share the line in between, labelled
+  once. It no longer looks like two parallel trunks.
+
 ## [0.12.0+home.15] - fork pdewaillypro
 
 ### Fixed

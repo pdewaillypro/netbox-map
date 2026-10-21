@@ -961,6 +961,40 @@
             e._pairTotal = pairCount[key];
         });
 
+        // One cable drawn as several lines (a trunk with a connector profile: 2C8P = two MTP
+        // legs at each end) is drawn as ONE trunk with a fork at each end: each line runs from
+        // its port to a junction just off the card, and all of them share the line between the
+        // two junctions, so it reads as one trunk with its legs, not as parallel trunks.
+        var legGroups = {};
+        edgeData.forEach(function(e) {
+            if (e._members || e.edge_type || typeof e.cable_id !== 'number') return;
+            (legGroups[e.cable_id] = legGroups[e.cable_id] || []).push(e);
+        });
+        Object.keys(legGroups).forEach(function(cid) {
+            var g = legGroups[cid];
+            if (g.length < 2) { delete legGroups[cid]; return; }
+            g.forEach(function(e, i) { e._legIdx = i; });
+        });
+        var LEG = 34;   // px from the card edge to the junction
+
+        function legEnds(d) {
+            // Junction points of d's cable: average height of each end's ports, LEG px out
+            var g = legGroups[d.cable_id];
+            var s = [], t = [];
+            g.forEach(function(e) {
+                var a = getPortPos(e.source_port, typeof e.target === 'object' ? e.target.id : e.target);
+                var b = getPortPos(e.target_port, typeof e.source === 'object' ? e.source.id : e.source);
+                if (a && b) { s.push(a); t.push(b); }
+            });
+            if (s.length < 2) return null;
+            function junction(list) {
+                var p = list[0], dir = p.side === 'right' ? 1 : -1;
+                var y = list.reduce(function(sum, q) { return sum + q.y; }, 0) / list.length;
+                return { x: p.x + dir * LEG, y: y, side: p.side };
+            }
+            return { s: junction(s), t: junction(t) };
+        }
+
         // Pre-compute channel-based ortho routes
         var CHANNEL_SPACING = 10; // px between cables in a channel
 
@@ -1031,6 +1065,23 @@
             // Check if devices are in the same column (vertical/HA link)
             var dxAbs = Math.abs(sp.x - tp.x);
             var isSameColumn = dxAbs < CARD_W * 1.2;
+
+            if (legGroups[d.cable_id] && !isSameColumn) {
+                var j = legEnds(d);
+                if (j) {
+                    var leg1 = 'M' + sp.x + ',' + sp.y + ' Q' + j.s.x + ',' + sp.y + ' ' + j.s.x + ',' + j.s.y;
+                    var leg2 = ' Q' + j.t.x + ',' + tp.y + ' ' + tp.x + ',' + tp.y;
+                    if (self.state.cableStyle === 'ortho') {
+                        var cx = (j.s.x + j.t.x) / 2;
+                        return leg1 + ' L' + cx + ',' + j.s.y + ' L' + cx + ',' + j.t.y
+                            + ' L' + j.t.x + ',' + j.t.y + leg2;
+                    }
+                    var jcp = Math.max(Math.abs(j.s.x - j.t.x) * 0.45, 60);
+                    var jsd = j.s.side === 'right' ? 1 : -1, jtd = j.t.side === 'right' ? 1 : -1;
+                    return leg1 + ' C' + (j.s.x + jcp * jsd) + ',' + j.s.y
+                        + ' ' + (j.t.x + jcp * jtd) + ',' + j.t.y + ' ' + j.t.x + ',' + j.t.y + leg2;
+                }
+            }
 
             // Parallel cable offset
             var fanOffset = 0;
@@ -1175,6 +1226,10 @@
             if (!sp || !tp) return;
 
             var pathId = 'cable-label-path-' + d.cable_id;
+            if (legGroups[d.cable_id]) {            // forked trunk: label the shared stretch
+                var jj = legEnds(d);
+                if (jj) { sp = jj.s; tp = jj.t; }
+            }
             var dxAbs = Math.abs(sp.x - tp.x);
             var isSameColumn = dxAbs < CARD_W * 1.2;
 
@@ -1228,6 +1283,7 @@
             .attr('dy', -5);
 
         cableLabels.each(function(d) {
+            if (d._legIdx > 0) return;      // a forked trunk is labelled once
             var tp = d3.select(this).append('textPath')
                 .attr('href', '#cable-label-path-' + d.cable_id)
                 .attr('startOffset', '50%')
