@@ -810,6 +810,14 @@ class TopologyDataView(LoginRequiredMixin, View):
                         info['remote'] = ', '.join(remote[cid])
                         info['remote_cable_id'] = cid
 
+        # A cable type filter keeps only the devices that have at least one cable of that type
+        # in view: the others would sit on the canvas with nothing drawn to them.
+        if cable_type:
+            linked = {e.get('source') for e in edges} | {e.get('target') for e in edges}
+            nodes = [n for n in nodes if not str(n.get('id', '')).startswith('device-') or n['id'] in linked]
+            kept = {n.get('id') for n in nodes}
+            edges = [e for e in edges if e.get('source') in kept and e.get('target') in kept]
+
         return JsonResponse({
             'nodes': nodes,
             'edges': edges,

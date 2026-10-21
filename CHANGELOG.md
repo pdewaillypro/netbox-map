@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.14] - fork pdewaillypro
+
+### Changed
+- **Cable type filter hides unrelated devices** — with a cable type selected, only the devices
+  that have at least one cable of that type in view are shown (the filter used to apply to the
+  cables only, leaving every device of the site/room on the canvas with nothing drawn to it).
+
 ## [0.12.0+home.13] - fork pdewaillypro
 
 ### Added
