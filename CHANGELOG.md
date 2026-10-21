@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.17] - fork pdewaillypro
+
+### Fixed
+- **Forked trunks with folded cassettes** — a line into a folded cassette that carries a single
+  cable keeps that cable's id, so the two legs of a connector-profile trunk are still recognised
+  as one trunk when the modules are folded (the default view).
+
 ## [0.12.0+home.16] - fork pdewaillypro
 
 ### Changed

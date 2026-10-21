@@ -524,6 +524,7 @@
                     var only = a._members[0];
                     a.cable_label = only.cable_label;
                     a.url = only.url;
+                    a.cable_id = only.cable_id;     // still that one cable (a forked trunk's leg)
                 } else if (a.bundle_name) {
                     a.cable_label = a.bundle_name + ' \u00b7 ' + n + ' FO';
                     if (a.bundle_url) a.url = a.bundle_url;
@@ -967,7 +968,7 @@
         // two junctions, so it reads as one trunk with its legs, not as parallel trunks.
         var legGroups = {};
         edgeData.forEach(function(e) {
-            if (e._members || e.edge_type || typeof e.cable_id !== 'number') return;
+            if ((e._members && e._members.length > 1) || e.edge_type || typeof e.cable_id !== 'number') return;
             (legGroups[e.cable_id] = legGroups[e.cable_id] || []).push(e);
         });
         Object.keys(legGroups).forEach(function(cid) {
