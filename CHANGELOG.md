@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.0+home.15] - fork pdewaillypro
+
+### Fixed
+- **Trunks with a connector profile** (MPO 2C8P…) — a cable with two terminations at each end is
+  drawn as one line per connector (A connector n to the B connector its profile maps to). Only the
+  first pair was drawn before (01A→03A, but not 01B→03B), and terminations of the same end were
+  never told apart.
+
 ## [0.12.0+home.14] - fork pdewaillypro
 
 ### Changed

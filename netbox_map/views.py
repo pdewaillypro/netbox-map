@@ -497,6 +497,7 @@ class TopologyDataView(LoginRequiredMixin, View):
 
         cable_terms = {}
         cable_objects = {}
+        term_ends = {}   # (cable_id, port key) -> (cable end, connector): pairs the ends of a trunk
         for ct_obj in cable_terminations:
             key = (ct_obj.termination_type_id, ct_obj.termination_id)
             if key not in port_id_map:
@@ -505,6 +506,7 @@ class TopologyDataView(LoginRequiredMixin, View):
                 cable_terms[ct_obj.cable_id] = []
                 cable_objects[ct_obj.cable_id] = ct_obj.cable
             cable_terms[ct_obj.cable_id].append(key)
+            term_ends[(ct_obj.cable_id, key)] = (ct_obj.cable_end, getattr(ct_obj, 'connector', None))
 
         # Cable bundles (NetBox 4.6+): one query for the names of the bundles in view, so the
         # front end can draw one line per trunk instead of one per fibre.
@@ -529,7 +531,8 @@ class TopologyDataView(LoginRequiredMixin, View):
                 dev_id = port_id_map.get((ct_id, term_id))
                 if dev_id and dev_id in device_ids:
                     port_info = port_info_map.get((ct_id, term_id))
-                    term_infos.append((dev_id, port_info))
+                    end, connector = term_ends.get((cable_id, (ct_id, term_id)), (None, None))
+                    term_infos.append((dev_id, port_info, end, connector))
 
             if len(term_infos) < 2:
                 continue
@@ -538,18 +541,42 @@ class TopologyDataView(LoginRequiredMixin, View):
             if cable_type and cable.type != cable_type:
                 continue
 
+            # A cable with a connector profile (MPO trunk 2C8P...) is one line per connector:
+            # A connector n goes to the B connector the profile maps it to, not to every
+            # termination of the far end (and only once per device pair, as before).
+            profile = None
+            if getattr(cable, 'profile', None):
+                try:
+                    profile = cable.profile_class()
+                except Exception:
+                    profile = None
+
+            def joined(a, b):
+                if a[2] and b[2] and a[2] == b[2]:
+                    return False                      # same end of the cable
+                if profile is None or a[3] is None or b[3] is None:
+                    return True
+                side, other = (a, b) if a[2] == 'A' else (b, a)
+                try:
+                    mapped = profile.get_mapped_position(side[2], side[3], 1)
+                except Exception:
+                    mapped = None
+                return mapped is None or mapped[0] == other[3]
+
             # Create edges between pairs of terminations on different devices
             seen_pairs = set()
             for i in range(len(term_infos)):
                 for j in range(i + 1, len(term_infos)):
-                    dev_a, port_a = term_infos[i]
-                    dev_b, port_b = term_infos[j]
-                    if dev_a == dev_b:
+                    dev_a, port_a = term_infos[i][:2]
+                    dev_b, port_b = term_infos[j][:2]
+                    if dev_a == dev_b or not joined(term_infos[i], term_infos[j]):
                         continue
-                    pair_key = (min(dev_a, dev_b), max(dev_a, dev_b), cable_id)
+                    pair_key = (min(dev_a, dev_b), max(dev_a, dev_b), cable_id,
+                                term_infos[i][3] if profile else None)
                     if pair_key in seen_pairs:
                         continue
                     seen_pairs.add(pair_key)
+                    n_edge = len(seen_pairs)
 
                     # Ensure consistent ordering
                     if dev_a > dev_b:
@@ -557,7 +584,7 @@ class TopologyDataView(LoginRequiredMixin, View):
                         port_a, port_b = port_b, port_a
 
                     edges.append({
-                        'id': f'cable-{cable_id}',
+                        'id': f'cable-{cable_id}' if n_edge == 1 else f'cable-{cable_id}-{n_edge}',
                         'source': f'device-{dev_a}',
                         'target': f'device-{dev_b}',
                         'source_port': port_a['id'] if port_a else None,
